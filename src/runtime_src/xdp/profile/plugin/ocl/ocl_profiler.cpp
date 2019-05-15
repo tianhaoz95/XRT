@@ -60,7 +60,7 @@ namespace xdp {
     Plugin->setObjectsReleased(mEndDeviceProfilingCalled);
 
     if (!mEndDeviceProfilingCalled && applicationProfilingOn()) {
-      xrt::message::send(xrt::message::severity_level::WARNING,
+      xrt::message::send(xrt::message::severity_level::XRT_WARNING,
           "Profiling may contain incomplete information. Please ensure all OpenCL objects are released by your host code (e.g., clReleaseProgram()).");
 
       // Before deleting, do a final read of counters and force flush of trace buffers
@@ -95,7 +95,7 @@ namespace xdp {
     // Only needs to be called once
     if (mEndDeviceProfilingCalled)
    	  return;
-    
+
     auto platform = getclPlatformID();
     if (applicationProfilingOn()) {
       // Write end of app event to trace buffer (Zynq only)
@@ -158,7 +158,7 @@ namespace xdp {
   void OCLProfiler::getDeviceTrace(bool forceReadTrace)
   {
     auto platform = getclPlatformID();
-    if (!isProfileRunning() || 
+    if (!isProfileRunning() ||
         (!deviceTraceProfilingOn() && !(Plugin->getFlowMode() == xdp::RTUtil::HW_EM) ))
       return;
 
@@ -207,7 +207,7 @@ namespace xdp {
     ProfileMgr->setStallTrace(stall_trace);
 
     // Enable profile summary if profile is on
-    std::string profileFile("sdaccel_profile_summary");
+    std::string profileFile("profile_summary");
     ProfileMgr->turnOnFile(xdp::RTUtil::FILE_SUMMARY);
     xdp::CSVProfileWriter* csvProfileWriter = new xdp::CSVProfileWriter(profileFile, "Xilinx", Plugin.get());
     ProfileWriters.push_back(csvProfileWriter);
@@ -216,14 +216,15 @@ namespace xdp {
     // Enable Trace File if profile is on and trace is enabled
     std::string timelineFile("");
     if (xrt::config::get_timeline_trace()) {
-      timelineFile = "sdaccel_timeline_trace";
+      timelineFile = "timeline_trace";
       ProfileMgr->turnOnFile(xdp::RTUtil::FILE_TIMELINE_TRACE);
     }
     xdp::CSVTraceWriter* csvTraceWriter = new xdp::CSVTraceWriter(timelineFile, "Xilinx", Plugin.get());
     TraceWriters.push_back(csvTraceWriter);
     ProfileMgr->attach(csvTraceWriter);
 
-    // In Testing
+#if 0
+    // Not Used
     if (std::getenv("SDX_NEW_PROFILE")) {
       std::string profileFile2("sdx_profile_summary");
       std::string timelineFile2("sdx_timeline_trace");
@@ -231,6 +232,7 @@ namespace xdp {
       ProfileWriters.push_back(csvProfileWriter2);
       ProfileMgr->attach(csvProfileWriter2);
     }
+#endif
 
     // Add functions to callback for profiling kernel/CU scheduling
     xocl::add_command_start_callback(xoclp::get_cu_start);
@@ -265,16 +267,21 @@ namespace xdp {
     // These tables are only enabled if a compatible monitor is present
     unsigned numStallSlots = 0;
     unsigned numStreamSlots = 0;
+    unsigned numShellSlots = 0;
     if (applicationProfilingOn() && ProfileMgr->isDeviceProfileOn()) {
       for (auto device_id : Platform->get_device_range()) {
         std::string deviceName = device_id->get_unique_name();
-        numStallSlots += xoclp::platform::get_profile_num_slots(getclPlatformID(),
-                                                                deviceName,
-                                                                XCL_PERF_MON_STALL);
+        numStallSlots  += xoclp::platform::get_profile_num_slots(getclPlatformID(),
+                                                                 deviceName,
+                                                                 XCL_PERF_MON_STALL);
         numStreamSlots += xoclp::platform::get_profile_num_slots(getclPlatformID(),
                                                                  deviceName,
                                                                  XCL_PERF_MON_STR);
+        numShellSlots  += xoclp::platform::get_profile_num_slots(getclPlatformID(),
+                                                                 deviceName,
+                                                                 XCL_PERF_MON_SHELL);
       }
+
       for (auto& w: ProfileWriters) {
         if (Plugin->getFlowMode() == RTUtil::DEVICE && numStallSlots > 0) {
           w->enableStallTable();
@@ -283,6 +290,9 @@ namespace xdp {
               Plugin->getFlowMode() == RTUtil::HW_EM) &&
             numStreamSlots > 0) {
           w->enableStreamTable();
+        }
+        if (Plugin->getFlowMode() == RTUtil::DEVICE && numShellSlots > 0) {
+          w->enableShellTables();
         }
       }
     }

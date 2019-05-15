@@ -154,7 +154,7 @@ namespace xdp {
     bool foundMemory = false;
     std::string portNameCheck = portName;
 
-    size_t index = portName.find_last_of(PORT_MEM_SEP);
+    size_t index = portName.find_last_of(IP_LAYOUT_SEP);
     if (index != std::string::npos) {
       foundMemory = true;
       portNameCheck = portName.substr(0, index);
@@ -199,6 +199,12 @@ namespace xdp {
 
   void XoclPlugin::getDeviceExecutionTimes(RTProfile *profile)
   {
+    // NOTE: all device are assumed to support PLRAMs
+    setPlramDevice(true);
+    setHbmDevice(false);
+    setKdmaDevice(false);
+    setP2PDevice(false);
+
     // Traverse all devices in platform
     for (auto device_id : mPlatformHandle->get_device_range()) {
       std::string deviceName = device_id->get_unique_name();
@@ -207,6 +213,24 @@ namespace xdp {
       // NOTE: if unused, then this returns 0.0
       double deviceExecTime = profile->getTotalKernelExecutionTime(deviceName);
       mDeviceExecTimesMap[deviceName] = std::to_string(deviceExecTime);
+
+      // TODO: checks below are kludgy; are there better ways to check for device support?
+
+      // Check if device supports HBM
+      if (deviceName.find("280") != std::string::npos)
+        setHbmDevice(true);
+
+      // Check if device supports KDMA
+      if ((deviceName.find("xilinx_u200_xdma_201830_2") != std::string::npos)
+          || (deviceName.find("xilinx_vcu1525_xdma_201830_2") != std::string::npos))
+        setKdmaDevice(true);
+
+      // Check if device supports P2P
+      if ((deviceName.find("xilinx_u200_xdma_201830_2") != std::string::npos)
+          || (deviceName.find("xilinx_u250_xdma_201830_2") != std::string::npos)
+          || (deviceName.find("xilinx_vcu1525_xdma_201830_2") != std::string::npos)
+          || (deviceName.find("samsung") != std::string::npos))
+        setP2PDevice(true);
     }
   }
 
@@ -258,35 +282,22 @@ namespace xdp {
   void XoclPlugin::getTraceStringFromComputeUnit(const std::string& deviceName,
       const std::string& cuName, std::string& traceString)
   {
-    auto iter = mComputeUnitKernelTraceMap.find(cuName);
-    if (iter != mComputeUnitKernelTraceMap.end()) {
-      traceString = iter->second;
-    }
-    else {
-      // CR 1003380 - Runtime does not send all CU Names so we create a key
-      std::string kernelName;
-      getProfileKernelName(deviceName, cuName, kernelName);
-      for (const auto &pair : mComputeUnitKernelTraceMap) {
-        auto fullName = pair.second;
-        auto first_index = fullName.find_first_of("|");
-        auto second_index = fullName.find('|', first_index+1);
-        auto third_index = fullName.find('|', second_index+1);
-        auto fourth_index = fullName.find("|", third_index+1);
-        auto fifth_index = fullName.find("|", fourth_index+1);
-        auto sixth_index = fullName.find_last_of("|");
-        std::string currKernelName = fullName.substr(third_index + 1, fourth_index - third_index - 1);
-        if (currKernelName == kernelName) {
-          traceString = fullName.substr(0,fifth_index + 1) + cuName + fullName.substr(sixth_index);
-          return;
-        }
+    std::string kernel;
+    getProfileKernelName(deviceName, cuName, kernel);
+    for (const auto &pair : mComputeUnitKernelTraceMap) {
+      if (pair.first == kernel) {
+        auto index = pair.second.find_last_of("|");
+        traceString = pair.second.substr(0,index + 1) + cuName + pair.second.substr(index);
+        return;
       }
-      traceString = std::string();
     }
+    traceString = std::string();
   }
 
   void XoclPlugin::setTraceStringForComputeUnit(const std::string& cuName, std::string& traceString)
   {
-    mComputeUnitKernelTraceMap[cuName] = traceString;
+    if (!cuName.empty() && mComputeUnitKernelTraceMap.find(cuName) == mComputeUnitKernelTraceMap.end())
+      mComputeUnitKernelTraceMap[cuName] = traceString;
   }
 
   size_t XoclPlugin::getDeviceTimestamp(std::string& deviceName)
@@ -324,8 +335,14 @@ namespace xdp {
     return xoclp::platform::get_profile_slot_properties(mPlatformHandle, deviceName, type, slotnum);
   }
 
+  bool XoclPlugin::isAPCtrlChain(const std::string& deviceName,
+                                     const std::string& cu)
+  {
+    return xoclp::platform::is_ap_ctrl_chain(mPlatformHandle, deviceName,cu);
+  }
+
   void XoclPlugin::sendMessage(const std::string &msg)
   {
-    xrt::message::send(xrt::message::severity_level::WARNING, msg);
+    xrt::message::send(xrt::message::severity_level::XRT_WARNING, msg);
   }
 } // xdp

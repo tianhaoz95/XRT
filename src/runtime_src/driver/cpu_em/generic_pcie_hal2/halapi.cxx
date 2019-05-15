@@ -325,7 +325,7 @@ unsigned xclProbe()
 {
   if(!xclemulation::isXclEmulationModeHwEmuOrSwEmu())
   {
-    std::string initMsg ="ERROR: [SDx-EM 09] Please set XCL_EMULATION_MODE to \"sw_emu\" to run software emulation. ";
+    std::string initMsg ="ERROR: [SW-EM 09] Please set XCL_EMULATION_MODE to \"sw_emu\" to run software emulation. ";
     std::cout<<initMsg<<std::endl;
     return 0;
   }
@@ -495,5 +495,24 @@ int xclPollCompletion(xclDeviceHandle handle, int min_compl, int max_compl, xclR
 {
   xclcpuemhal2::CpuemShim *drv = xclcpuemhal2::CpuemShim::handleCheck(handle);
   return drv ? drv->xclPollCompletion(min_compl, max_compl, comps, actual, timeout) : -ENODEV;
+}
+
+/*
+ * API to get number of live processes. 
+ * Applicable only for System Flow as it supports Multiple processes on same device.
+ * For CPU emulation, return 0
+ */
+uint xclGetNumLiveProcesses(xclDeviceHandle handle)
+{
+  return 0;
+}
+
+int xclLogMsg(xclDeviceHandle handle, xrtLogMsgLevel level, const char* tag, const char* format, ...)
+{
+  va_list args;
+  va_start(args, format);
+  int ret = xclcpuemhal2::CpuemShim::xclLogMsg(handle, level, tag, format, args);
+  va_end(args);
+  return ret;
 }
 

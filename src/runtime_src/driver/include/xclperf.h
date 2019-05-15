@@ -40,6 +40,11 @@
 #define DSA_MAJOR_VERSION 1
 #define DSA_MINOR_VERSION 1
 
+/************************ DEBUG IP LAYOUT ************************************/
+
+#define IP_LAYOUT_HOST_NAME "HOST"
+#define IP_LAYOUT_SEP "-"
+
 /************************ APM 0: Monitor MIG Ports ****************************/
 
 #define XPAR_AXI_PERF_MON_0_NUMBER_SLOTS                2
@@ -190,7 +195,8 @@
 
 #define XAPM_MAX_NUMBER_SLOTS             8
 // Max slots = floor(max slots on trace funnel / 2) = floor(63 / 2) = 31
-#define XSPM_MAX_NUMBER_SLOTS             31
+// NOTE: SPM max slots += 3 to support XDMA/KDMA/P2P monitors on some 2018.3 platforms
+#define XSPM_MAX_NUMBER_SLOTS             34
 #define XSAM_MAX_NUMBER_SLOTS             31
 #define XSSPM_MAX_NUMBER_SLOTS            31
 #define XAPM_METRIC_COUNTERS_PER_SLOT     8
@@ -225,6 +231,7 @@
 #define MAX_TRACE_ID_SPM        61
 #define MIN_TRACE_ID_SAM        64
 #define MAX_TRACE_ID_SAM        544
+#define MAX_TRACE_ID_SAM_HWEM   94
 #define MIN_TRACE_ID_SSPM       576
 #define MAX_TRACE_ID_SSPM       607
 
@@ -256,10 +263,12 @@
 enum xclPerfMonType {
 	XCL_PERF_MON_MEMORY = 0,
 	XCL_PERF_MON_HOST   = 1,
-	XCL_PERF_MON_ACCEL  = 2,
-	XCL_PERF_MON_STALL  = 3,
-	XCL_PERF_MON_STR = 4,
-	XCL_PERF_MON_TOTAL_PROFILE = 5
+	XCL_PERF_MON_SHELL  = 2,
+	XCL_PERF_MON_ACCEL  = 3,
+	XCL_PERF_MON_STALL  = 4,
+	XCL_PERF_MON_STR    = 5,
+	XCL_PERF_MON_FIFO   = 6,
+	XCL_PERF_MON_TOTAL_PROFILE = 7
 };
 
 /* Performance monitor start event */
@@ -286,7 +295,7 @@ enum xclPerfMonCounterType {
 
 /*
  * Performance monitor event types
- * NOTE: these are the same values used by SDSoC
+ * NOTE: these are the same values used by Zynq
  */
 enum xclPerfMonEventType {
   XCL_PERF_MON_START_EVENT = 0x4,
@@ -308,7 +317,7 @@ enum xclPerfMonEventType {
 
 /*
  * Performance monitor IDs for host SW events
- * NOTE: HW events start at 0, SDSoC SW events start at 4000
+ * NOTE: HW events start at 0, Zynq SW events start at 4000
  */
 enum xclPerfMonEventID {
   XCL_PERF_MON_HW_EVENT = 0,
@@ -373,15 +382,17 @@ typedef struct {
   unsigned long long ReadLatency[XSPM_MAX_NUMBER_SLOTS];
   unsigned short     ReadMinLatency[XSPM_MAX_NUMBER_SLOTS];
   unsigned short     ReadMaxLatency[XSPM_MAX_NUMBER_SLOTS];
-  // Sdx Accel Mon
+  // Accelerator Monitor
   unsigned long long CuExecCount[XSAM_MAX_NUMBER_SLOTS];
   unsigned long long CuExecCycles[XSAM_MAX_NUMBER_SLOTS];
+  unsigned long long CuBusyCycles[XSAM_MAX_NUMBER_SLOTS];
+  unsigned long long CuMaxParallelIter[XSAM_MAX_NUMBER_SLOTS];
   unsigned long long CuStallExtCycles[XSAM_MAX_NUMBER_SLOTS];
   unsigned long long CuStallIntCycles[XSAM_MAX_NUMBER_SLOTS];
   unsigned long long CuStallStrCycles[XSAM_MAX_NUMBER_SLOTS];
   unsigned long long CuMinExecCycles[XSAM_MAX_NUMBER_SLOTS];
   unsigned long long CuMaxExecCycles[XSAM_MAX_NUMBER_SLOTS];
-  // SDx Stream Mon
+  // AXI Stream Monitor
   unsigned long long StrNumTranx[XSSPM_MAX_NUMBER_SLOTS];
   unsigned long long StrDataBytes[XSSPM_MAX_NUMBER_SLOTS];
   unsigned long long StrBusyCycles[XSSPM_MAX_NUMBER_SLOTS];
@@ -435,7 +446,7 @@ enum DeviceType {
  * nifd driver.
  */
 typedef struct {
-  DeviceType device_type;
+  enum DeviceType device_type;
   unsigned int device_index;
   unsigned int mgmt_instance;
   unsigned int user_instance;

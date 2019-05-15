@@ -53,12 +53,22 @@ add_subdirectory(xclbin)
 add_subdirectory(xocl)
 add_subdirectory(xrt)
 add_subdirectory(ert)
-add_subdirectory(tools/scripts)
+if (${XRT_NATIVE_BUILD} STREQUAL "yes")
+  # Only for host native build.
+  # For embedded, headers and libraries are installed in /usr
+  # Not requeired setup.sh/.csh
+  add_subdirectory(tools/scripts)
+endif()
 
-set (CMAKE_SHARED_LINKER_FLAGS "-Wl,-Bsymbolic")
+# Attach to the user's linker flags
+set (CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-Bsymbolic")
+set (CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,defs")
 
-set_target_properties(xilinxopencl PROPERTIES VERSION ${XRT_VERSION_STRING}
-  SOVERSION ${XRT_SOVERSION})
+set_target_properties(xilinxopencl PROPERTIES
+  VERSION ${XRT_VERSION_STRING}
+  SOVERSION ${XRT_SOVERSION}
+  INSTALL_RPATH $ORIGIN
+  )
 
 target_link_libraries(oclxdp
   xdp
@@ -69,7 +79,15 @@ add_library(xdp_hal_plugin SHARED ${XRT_SRC} $<TARGET_OBJECTS:xdp_hal_plugin_obj
 add_dependencies(xdp_hal_plugin xrt_corestatic xdp)
 target_link_libraries(xdp_hal_plugin xrt_corestatic xdp)
 
+set_target_properties(oclxdp PROPERTIES VERSION ${XRT_VERSION_STRING}
+  SOVERSION ${XRT_SOVERSION})
+
+set_target_properties(xdp PROPERTIES VERSION ${XRT_VERSION_STRING}
+  SOVERSION ${XRT_SOVERSION})
+
+
 target_link_libraries(xilinxopencl
+  xrt_coreutil
   ${Boost_FILESYSTEM_LIBRARY}
   ${Boost_SYSTEM_LIBRARY}
   dl

@@ -23,6 +23,8 @@
 #include "xdp/profile/writer/base_profile.h"
 #include "xdp/profile/writer/base_trace.h"
 
+#include "driver/include/xcl_perfmon_parameters.h"
+
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -41,8 +43,6 @@ namespace xdp {
     mTraceParserHandle(TraceParserHandle),
     mPluginHandle(Plugin)
   {
-    // Indeces are the same for HW and emulation
-    HostSlotIndex = XPAR_SPM0_HOST_SLOT;
   }
 
   SummaryWriter::~SummaryWriter()
@@ -79,8 +79,8 @@ namespace xdp {
   // Log device counters
   // ***************************************************************************
 
-  void SummaryWriter::logDeviceCounters(std::string deviceName, std::string binaryName, xclPerfMonType type,
-      xclCounterResults& counterResults, uint64_t timeNsec, bool firstReadAfterProgram)
+  void SummaryWriter::logDeviceCounters(std::string deviceName, std::string binaryName, uint32_t programID,
+       xclPerfMonType type, xclCounterResults& counterResults, uint64_t timeNsec, bool firstReadAfterProgram)
   {
     // Number of monitor slots
     uint32_t numSlots = 0;
@@ -105,17 +105,20 @@ namespace xdp {
        */
       numSlots = mPluginHandle->getProfileNumberSlots(XCL_PERF_MON_MEMORY, deviceName);
       // Traverse all monitor slots (host and all CU ports)
-   	   bool deviceDataExists = (mDeviceBinaryDataSlotsMap.find(key) == mDeviceBinaryDataSlotsMap.end()) ? false : true;
-       for (unsigned int s=0; s < numSlots; ++s) {
+      bool deviceDataExists = (mDeviceBinaryDataSlotsMap.find(key) == mDeviceBinaryDataSlotsMap.end()) ? false : true;
+      for (unsigned int s=0; s < numSlots; ++s) {
         mPluginHandle->getProfileSlotName(XCL_PERF_MON_MEMORY, deviceName, s, slotName);
-        if (!deviceDataExists)
+        if (!deviceDataExists) {
           mDeviceBinaryDataSlotsMap[key].push_back(slotName);
-        uint32_t prevWriteBytes   = mFinalCounterResultsMap[key].WriteBytes[s];
-        uint32_t prevReadBytes    = mFinalCounterResultsMap[key].ReadBytes[s];
-        uint32_t prevWriteTranx   = mFinalCounterResultsMap[key].WriteTranx[s];
-        uint32_t prevReadTranx    = mFinalCounterResultsMap[key].ReadTranx[s];
-        uint32_t prevWriteLatency = mFinalCounterResultsMap[key].WriteLatency[s];
-        uint32_t prevReadLatency  = mFinalCounterResultsMap[key].ReadLatency[s];
+          auto p = mPluginHandle->getProfileSlotProperties(XCL_PERF_MON_MEMORY, deviceName, s);
+          mDataSlotsPropertiesMap[key].push_back(p);
+        }
+        uint64_t prevWriteBytes   = mFinalCounterResultsMap[key].WriteBytes[s];
+        uint64_t prevReadBytes    = mFinalCounterResultsMap[key].ReadBytes[s];
+        uint64_t prevWriteTranx   = mFinalCounterResultsMap[key].WriteTranx[s];
+        uint64_t prevReadTranx    = mFinalCounterResultsMap[key].ReadTranx[s];
+        uint64_t prevWriteLatency = mFinalCounterResultsMap[key].WriteLatency[s];
+        uint64_t prevReadLatency  = mFinalCounterResultsMap[key].ReadLatency[s];
 
         // Check for rollover of byte counters; if detected, add 2^32
         // Otherwise, if first read after program with binary, then capture bytes from previous xclbin
@@ -141,20 +144,23 @@ namespace xdp {
           mRolloverCounterResultsMap[key].WriteLatency[s]  += prevWriteLatency;
           mRolloverCounterResultsMap[key].ReadLatency[s]   += prevReadLatency;
         }
-   	  }
+      }
       /*
        * Log SAM Counters
        */
       numSlots = mPluginHandle->getProfileNumberSlots(XCL_PERF_MON_ACCEL, deviceName);
       for (unsigned int s=0; s < numSlots; ++s) {
-        uint32_t prevCuExecCount      = mFinalCounterResultsMap[key].CuExecCount[s];
-        uint32_t prevCuExecCycles     = mFinalCounterResultsMap[key].CuExecCycles[s];
-        uint32_t prevCuStallExtCycles = mFinalCounterResultsMap[key].CuStallExtCycles[s];
-        uint32_t prevCuStallIntCycles = mFinalCounterResultsMap[key].CuStallIntCycles[s];
-        uint32_t prevCuStallStrCycles = mFinalCounterResultsMap[key].CuStallStrCycles[s];
+        uint64_t prevCuExecCount       = mFinalCounterResultsMap[key].CuExecCount[s];
+        uint64_t prevCuExecCycles      = mFinalCounterResultsMap[key].CuExecCycles[s];
+        uint64_t prevCuBusyCycles      = mFinalCounterResultsMap[key].CuBusyCycles[s];
+        uint64_t prevCuStallExtCycles  = mFinalCounterResultsMap[key].CuStallExtCycles[s];
+        uint64_t prevCuStallIntCycles  = mFinalCounterResultsMap[key].CuStallIntCycles[s];
+        uint64_t prevCuStallStrCycles  = mFinalCounterResultsMap[key].CuStallStrCycles[s];
         if (!firstReadAfterProgram) {
           if (counterResults.CuExecCycles[s] < prevCuExecCycles)
             mRolloverCountsMap[key].CuExecCycles[s]     += 1;
+          if (counterResults.CuBusyCycles[s] < prevCuBusyCycles)
+            mRolloverCountsMap[key].CuBusyCycles[s]     += 1;
           if (counterResults.CuStallExtCycles[s] < prevCuStallExtCycles)
             mRolloverCountsMap[key].CuStallExtCycles[s] += 1;
           if (counterResults.CuStallIntCycles[s] < prevCuStallIntCycles)
@@ -165,6 +171,7 @@ namespace xdp {
         else {
           mRolloverCounterResultsMap[key].CuExecCount[s]      += prevCuExecCount;
           mRolloverCounterResultsMap[key].CuExecCycles[s]     += prevCuExecCycles;
+          mRolloverCounterResultsMap[key].CuBusyCycles[s]     += prevCuBusyCycles;
           mRolloverCounterResultsMap[key].CuStallExtCycles[s] += prevCuStallExtCycles;
           mRolloverCounterResultsMap[key].CuStallIntCycles[s] += prevCuStallIntCycles;
           mRolloverCounterResultsMap[key].CuStallStrCycles[s] += prevCuStallStrCycles;
@@ -201,14 +208,24 @@ namespace xdp {
       uint32_t cuExecCount = counterResults.CuExecCount[s] + rolloverResults.CuExecCount[s];
       uint64_t cuExecCycles = counterResults.CuExecCycles[s] + rolloverResults.CuExecCycles[s]
                                 + (rolloverCounts.CuExecCycles[s] * 4294967296UL);
+      uint64_t cuBusyCycles = counterResults.CuBusyCycles[s] + rolloverResults.CuBusyCycles[s]
+                                + (rolloverCounts.CuBusyCycles[s] * 4294967296UL);
       uint32_t cuMaxExecCycles  = counterResults.CuMaxExecCycles[s];
       uint32_t cuMinExecCycles  = counterResults.CuMinExecCycles[s];
-      double cuRunTimeMsec = (double) cuExecCycles / deviceCyclesMsec;
+      uint64_t cuMaxParallelIter = counterResults.CuMaxParallelIter[s];
+      double cuRunTimeMsec = (double) cuBusyCycles / deviceCyclesMsec;
+      double cuRunTimeAvgMsec = (double) (cuExecCycles / deviceCyclesMsec) / cuExecCount;
       double cuMaxExecCyclesMsec = (double) cuMaxExecCycles / deviceCyclesMsec;
       double cuMinExecCyclesMsec = (double) cuMinExecCycles / deviceCyclesMsec;
+      uint32_t isDataflow = mPluginHandle->isAPCtrlChain(deviceName, cuName) ? 1 : 0;
+      std::string binaryInstance = binaryName + std::to_string(programID);
       //XDP_LOG("[RT_PROFILE] cuName : %s exec cycles : %d runtime %f \n", cuName.c_str(), cuExecCycles, cuRunTimeMsec);
-      mProfileCounters->logComputeUnitStats(cuName, kernelName, cuRunTimeMsec, cuMaxExecCyclesMsec,
-                                           cuMinExecCyclesMsec, cuExecCount, kernelClockMhz);
+      // Don't log if not a valid stat
+      if (cuMaxParallelIter > 0)
+        mProfileCounters->logComputeUnitStats(cuName, kernelName, cuRunTimeMsec,
+                                              cuRunTimeAvgMsec, cuMaxExecCyclesMsec,
+                                              cuMinExecCyclesMsec, cuExecCount, kernelClockMhz,
+                                              isDataflow, cuMaxParallelIter, deviceName, binaryInstance);
     }
 #ifdef XDP_VERBOSE
     if (this->isTimelineTraceFileOn()) {
@@ -254,51 +271,9 @@ namespace xdp {
     mProfileCounters->writeAcceleratorSummary(writer);
   }
 
-  void SummaryWriter::writeHostTransferSummary(ProfileWriterI* writer) const
+  void SummaryWriter::writeTransferSummary(ProfileWriterI* writer, RTUtil::e_monitor_type monitorType) const
   {
-    uint64_t totalReadBytes    = 0;
-    uint64_t totalWriteBytes   = 0;
-    uint64_t totalReadLatency  = 0;
-    uint64_t totalWriteLatency = 0;
-    double totalReadTimeMsec   = 0.0;
-    double totalWriteTimeMsec  = 0.0;
-
-    auto tp = mTraceParserHandle;
-
-    // Get total bytes and total time (currently derived from latency)
-    // across all devices
-    //
-    // CR 951564: Use APM counters to calculate throughput (i.e., byte count and total time)
-    // NOTE: for now, we only use this for writes (see PerformanceCounter::writeHostTransferSummary)
-    auto iter = mFinalCounterResultsMap.begin();
-    for (; iter != mFinalCounterResultsMap.end(); ++iter) {
-      std::string key = iter->first;
-      std::string deviceName = key.substr(0, key.find_first_of("|"));
-
-      // Get results
-      xclCounterResults counterResults = iter->second;
-
-      xclCounterResults rolloverCounts;
-      if (mRolloverCountsMap.find(key) != mRolloverCountsMap.end())
-        rolloverCounts = mRolloverCountsMap.at(key);
-      else
-        memset(&rolloverCounts, 0, sizeof(xclCounterResults));
-      uint32_t  numHostSlots = mPluginHandle->getProfileNumberSlots(XCL_PERF_MON_HOST, deviceName);
-      for (uint32_t s=HostSlotIndex; s < HostSlotIndex + numHostSlots; s++) {
-        totalReadBytes += counterResults.ReadBytes[s]
-                          + (rolloverCounts.ReadBytes[s] * 4294967296UL);
-        totalWriteBytes += counterResults.WriteBytes[s]
-                          + (rolloverCounts.WriteBytes[s] * 4294967296UL);
-        // Total transfer time = sum of all tranx latencies
-        // msec = cycles / (1000 * (Mcycles/sec))
-        totalReadLatency += counterResults.ReadLatency[s]
-                            + (rolloverCounts.ReadLatency[s] * 4294967296UL);
-        totalWriteLatency += counterResults.WriteLatency[s]
-                            + (rolloverCounts.WriteLatency[s] * 4294967296UL);
-      }
-    }
-    totalReadTimeMsec = totalReadLatency / (1000.0 * tp->getDeviceClockFreqMHz());
-    totalWriteTimeMsec = totalWriteLatency / (1000.0 * tp->getDeviceClockFreqMHz());
+    std::string deviceName;
 
     // Get maximum throughput rates
     double readMaxBandwidthMBps = 0.0;
@@ -309,8 +284,110 @@ namespace xdp {
       writeMaxBandwidthMBps = mPluginHandle->getWriteMaxBandwidthMBps();
     }
 
-    mProfileCounters->writeHostTransferSummary(writer, true,  totalReadBytes,  totalReadTimeMsec,  readMaxBandwidthMBps);
-    mProfileCounters->writeHostTransferSummary(writer, false, totalWriteBytes, totalWriteTimeMsec, writeMaxBandwidthMBps);
+    //
+    // Host transfers
+    //
+    // Catch host buffer transfers (reported on aggregated basis)
+    // NOTE: the actual statistics reported come from BufferReadStat and BufferWriteStat in ProfileCounters
+    if (monitorType == RTUtil::MON_HOST_DYNAMIC) {
+      mProfileCounters->writeTransferSummary(writer, deviceName, monitorType,  true, 0, 0, 0, 0,  readMaxBandwidthMBps);
+      mProfileCounters->writeTransferSummary(writer, deviceName, monitorType, false, 0, 0, 0, 0, writeMaxBandwidthMBps);
+      return;
+    }
+
+    auto tp = mTraceParserHandle;
+
+    std::string monitorName;
+    RTUtil::monitorTypeToString(monitorType, monitorName);
+
+    double totalReadTimeMsec  = 0;
+    double totalWriteTimeMsec = 0;
+    if (monitorType == RTUtil::MON_SHELL_KDMA) {
+      totalReadTimeMsec  += mProfileCounters->getBufferTransferTotalTime(RTUtil::COPY_BUFFER);
+      totalWriteTimeMsec += mProfileCounters->getBufferTransferTotalTime(RTUtil::COPY_BUFFER);
+    }
+    else if (monitorType == RTUtil::MON_SHELL_P2P) {
+      totalReadTimeMsec  += mProfileCounters->getBufferTransferTotalTime(RTUtil::COPY_BUFFER_P2P);
+      totalReadTimeMsec  += mProfileCounters->getBufferTransferTotalTime(RTUtil::READ_BUFFER_P2P);
+
+      totalWriteTimeMsec += mProfileCounters->getBufferTransferTotalTime(RTUtil::COPY_BUFFER_P2P);
+      totalWriteTimeMsec += mProfileCounters->getBufferTransferTotalTime(RTUtil::WRITE_BUFFER_P2P);
+    } else {
+      totalReadTimeMsec  += mProfileCounters->getBufferTransferTotalTime(RTUtil::READ_BUFFER);
+      totalWriteTimeMsec += mProfileCounters->getBufferTransferTotalTime(RTUtil::WRITE_BUFFER);
+    }
+
+    //
+    // Shell monitors: KDMA/XDMA/P2P
+    //
+    // Traverse each device and report KDMA/XDMA/P2P counters (if available)
+    auto iter = mFinalCounterResultsMap.begin();
+    for (; iter != mFinalCounterResultsMap.end(); ++iter) {
+      std::string key = iter->first;
+      deviceName = key.substr(0, key.find_first_of("|"));
+
+      // Get results
+      xclCounterResults counterResults = iter->second;
+
+      xclCounterResults rolloverCounts;
+      if (mRolloverCountsMap.find(key) != mRolloverCountsMap.end())
+        rolloverCounts = mRolloverCountsMap.at(key);
+      else
+        memset(&rolloverCounts, 0, sizeof(xclCounterResults));
+
+      uint64_t totalReadBytes    = 0;
+      uint64_t totalWriteBytes   = 0;
+      uint64_t totalReadTranx    = 0;
+      uint64_t totalWriteTranx   = 0;
+      uint64_t totalReadLatency  = 0;
+      uint64_t totalWriteLatency = 0;
+
+      // Traverse all slots to find shell monitors
+      uint32_t numSlots = mPluginHandle->getProfileNumberSlots(XCL_PERF_MON_MEMORY, deviceName);
+
+      for (uint32_t s=0; s < numSlots; s++) {
+        // Make sure it's the shell monitor we're looking for
+        // NOTE: properties and name must match
+        uint32_t properties = mPluginHandle->getProfileSlotProperties(XCL_PERF_MON_MEMORY, deviceName, s);
+        if (!(properties & XSPM_HOST_PROPERTY_MASK))
+          continue;
+
+        std::string slotName;
+        mPluginHandle->getProfileSlotName(XCL_PERF_MON_MEMORY, deviceName, s, slotName);
+        if (slotName.find(monitorName) == std::string::npos)
+          continue;
+
+        // We found one! Now add it to totals
+        totalReadBytes += counterResults.ReadBytes[s]
+                          + (rolloverCounts.ReadBytes[s] * 4294967296UL);
+        totalWriteBytes += counterResults.WriteBytes[s]
+                          + (rolloverCounts.WriteBytes[s] * 4294967296UL);
+        totalReadTranx += counterResults.ReadTranx[s]
+                          + (rolloverCounts.ReadTranx[s] * 4294967296UL);
+        totalWriteTranx += counterResults.WriteTranx[s]
+                          + (rolloverCounts.WriteTranx[s] * 4294967296UL);
+        // Total transfer time = sum of all tranx latencies
+        // msec = cycles / (1000 * (Mcycles/sec))
+        totalReadLatency += counterResults.ReadLatency[s]
+                            + (rolloverCounts.ReadLatency[s] * 4294967296UL);
+        totalWriteLatency += counterResults.WriteLatency[s]
+                            + (rolloverCounts.WriteLatency[s] * 4294967296UL);
+      }
+
+      double totalReadLatencyNsec  = (1000.0 * totalReadLatency)  / tp->getDeviceClockFreqMHz();
+      double totalWriteLatencyNsec = (1000.0 * totalWriteLatency) / tp->getDeviceClockFreqMHz();
+
+      // Monitoring of KDMA/XDMA/P2P is reported on per-device basis
+      // NOTE: don't show if no transfers were recorded
+      if (totalReadTranx > 0) {
+        mProfileCounters->writeTransferSummary(writer, deviceName, monitorType, true,  totalReadBytes,
+            totalReadTranx, totalReadLatencyNsec, totalReadTimeMsec, readMaxBandwidthMBps);
+      }
+      if (totalWriteTranx > 0) {
+        mProfileCounters->writeTransferSummary(writer, deviceName, monitorType, false, totalWriteBytes,
+            totalWriteTranx, totalWriteLatencyNsec, totalWriteTimeMsec, writeMaxBandwidthMBps);
+      }
+    }
   }
 
   void SummaryWriter::writeStallSummary(ProfileWriterI* writer) const
@@ -375,29 +452,51 @@ namespace xdp {
 
       // Get results
       xclCounterResults counterResults = iter->second;
-      std::string cuPortName = "";
       uint32_t numSlots = mDeviceBinaryStrSlotsMap.at(key).size();
 
+      std::string cuPortName;
+      std::string masterPortName;
+      std::string slavePortName;
+      std::string masterArgNames = FIELD_NOT_APPLICABLE;
+      std::string slaveArgNames = FIELD_NOT_APPLICABLE;
+      std::size_t cuFound = 0;
+      std::size_t masterSlaveFound = 0;
+      double totalCUTimeMsec = 0.0;
       for (unsigned int s=0; s < numSlots; ++s) {
         cuPortName = mDeviceBinaryStrSlotsMap.at(key)[s];
-        std::string cuName = cuPortName.substr(0, cuPortName.find_first_of("/"));
-        std::string portName = cuPortName.substr(cuPortName.find_first_of("/")+1);
-        //std::transform(portName.begin(), portName.end(), portName.begin(), ::tolower);
-
-        std::string memoryName;
-        std::string argNames;
-        mPluginHandle->getArgumentsBank(deviceName, cuName, portName, argNames, memoryName);
+        masterSlaveFound = cuPortName.find(IP_LAYOUT_SEP);
+        // Debug IP format : "MasterName-SlaveName"
+        if (masterSlaveFound == std::string::npos)
+          return;
+        masterPortName = cuPortName.substr(0, masterSlaveFound);
+        slavePortName = cuPortName.substr(masterSlaveFound + 1);
+        cuFound = masterPortName.find_first_of("/");
+        // Look for arguments if not HOST or PIPE
+        if (cuFound != std::string::npos) {
+          auto cu = masterPortName.substr(0, cuFound);
+          auto port = masterPortName.substr(cuFound+1);
+          std::string placeholder;
+          mPluginHandle->getArgumentsBank(deviceName, cu, port, masterArgNames, placeholder);
+          totalCUTimeMsec = mProfileCounters->getComputeUnitTotalTime(deviceName, cu);
+        }
+        cuFound = slavePortName.find_first_of("/");
+        if (cuFound != std::string::npos) {
+          auto cu = slavePortName.substr(0, cuFound);
+          auto port = slavePortName.substr(cuFound+1);
+          std::string placeholder;
+          mPluginHandle->getArgumentsBank(deviceName, cu, port, slaveArgNames, placeholder);
+          totalCUTimeMsec = mProfileCounters->getComputeUnitTotalTime(deviceName, cu);
+        }
 
         uint64_t strNumTranx =     counterResults.StrNumTranx[s];
         uint64_t strBusyCycles =   counterResults.StrBusyCycles[s];
-        uint64_t strDataBytes =   counterResults.StrDataBytes[s];
-        uint64_t strStallCycles =   counterResults.StrStallCycles[s];
-        uint64_t strStarveCycles =  counterResults.StrStarveCycles[s];
+        uint64_t strDataBytes =    counterResults.StrDataBytes[s];
+        uint64_t strStallCycles =  counterResults.StrStallCycles[s];
+        uint64_t strStarveCycles = counterResults.StrStarveCycles[s];
         // Skip ports without activity
         if (strBusyCycles <= 0 || strNumTranx == 0)
           continue;
 
-        double totalCUTimeMsec = mProfileCounters->getComputeUnitTotalTime(deviceName, cuName);
         double transferRateMBps = (totalCUTimeMsec == 0) ? 0.0 :
             (strDataBytes / (1000.0 * totalCUTimeMsec));
 
@@ -405,8 +504,10 @@ namespace xdp {
         double linkStarve = (double) strStarveCycles / (double) strBusyCycles * 100.0;
         double linkStall =  (double) strStallCycles / (double) strBusyCycles * 100.0;
         double linkUtil =  100.0 - linkStarve - linkStall;
-        writer->writeKernelStreamSummary(deviceName, cuPortName, argNames, strNumTranx, transferRateMBps,
-                                         avgSize, linkUtil, linkStarve, linkStall);
+        writer->writeKernelStreamSummary(deviceName, masterPortName, masterArgNames,
+                                         slavePortName, slaveArgNames, strNumTranx,
+                                         transferRateMBps, avgSize, linkUtil, linkStarve,
+                                         linkStall);
       }
     }
   }
@@ -437,20 +538,16 @@ namespace xdp {
 
       // Number of monitor slots
       uint32_t numSlots = mDeviceBinaryDataSlotsMap.at(key).size();
-      uint32_t numHostSlots = mPluginHandle->getProfileNumberSlots(XCL_PERF_MON_HOST, deviceName);
 
       // Total kernel time = sum of all kernel executions
       //double totalKernelTimeMsec = mProfileCounters->getTotalKernelExecutionTime(deviceName);
       double maxTransferRateMBps = getGlobalMemoryMaxBandwidthMBps();
 
-      unsigned int s = 0;
-      if (HostSlotIndex == 0)
-        s = numHostSlots;
-      for (; s < numSlots; ++s) {
-        if (s == HostSlotIndex)
+      for (unsigned s = 0; s < numSlots; ++s) {
+        if (mDataSlotsPropertiesMap.at(key)[s] & XSPM_HOST_PROPERTY_MASK)
           continue;
 
-   	    std::string cuPortName = mDeviceBinaryDataSlotsMap.at(key)[s];
+         std::string cuPortName = mDeviceBinaryDataSlotsMap.at(key)[s];
         std::string cuName = cuPortName.substr(0, cuPortName.find_first_of("/"));
         std::string portName = cuPortName.substr(cuPortName.find_first_of("/")+1);
         //std::transform(portName.begin(), portName.end(), portName.begin(), ::tolower);
@@ -485,11 +582,11 @@ namespace xdp {
         // First do READ, then WRITE
         if (totalReadTranx > 0) {
           mProfileCounters->writeKernelTransferSummary(writer, deviceName, cuPortName, argNames, memoryName,
-        	  true,  totalReadBytes, totalReadTranx, totalCUTimeMsec, totalReadTimeMsec, maxTransferRateMBps);
+            true,  totalReadBytes, totalReadTranx, totalCUTimeMsec, totalReadTimeMsec, maxTransferRateMBps);
         }
         if (totalWriteTranx > 0) {
           mProfileCounters->writeKernelTransferSummary(writer, deviceName, cuPortName, argNames, memoryName,
-        	  false, totalWriteBytes, totalWriteTranx, totalCUTimeMsec, totalWriteTimeMsec, maxTransferRateMBps);
+            false, totalWriteBytes, totalWriteTranx, totalCUTimeMsec, totalWriteTimeMsec, maxTransferRateMBps);
         }
       }
     }
@@ -532,12 +629,7 @@ namespace xdp {
 
       // Number of monitor slots
       uint32_t numSlots = mDeviceBinaryDataSlotsMap.at(key).size();
-      uint32_t numHostSlots = mPluginHandle->getProfileNumberSlots(XCL_PERF_MON_HOST, deviceName);
-
       double maxTransferRateMBps = getGlobalMemoryMaxBandwidthMBps();
-
-      //double totalReadTimeMsec  = mProfileCounters->getTotalKernelExecutionTime(deviceName);
-      //double totalWriteTimeMsec = totalReadTimeMsec;
 
       // Maximum bytes per AXI data transfer
       // NOTE: this assumes the entire global memory bit width with a burst of 256 (max burst length of AXI4)
@@ -548,13 +640,8 @@ namespace xdp {
 
       // Gather unique names of monitored CUs on this device
       std::map<std::string, uint64_t> cuNameTranxMap;
-      unsigned int s;
-      if (HostSlotIndex == 0)
-        s = numHostSlots;
-      else 
-        s = 0;
-      for (; s < numSlots; ++s) {
-        if (s == HostSlotIndex)
+      for (unsigned s=0; s < numSlots; ++s) {
+        if (mDataSlotsPropertiesMap.at(key)[s] & XSPM_HOST_PROPERTY_MASK)
           continue;
 
         std::string cuPortName = mDeviceBinaryDataSlotsMap.at(key)[s];
@@ -569,12 +656,8 @@ namespace xdp {
 
         uint64_t totalReadTranx  = 0;
         uint64_t totalWriteTranx = 0;
-        if (HostSlotIndex == 0)
-          s = numHostSlots;
-        else 
-          s = 0;
-        for (; s < numSlots; ++s) {
-          if (s == HostSlotIndex)
+        for (unsigned s=0; s < numSlots; ++s) {
+          if (mDataSlotsPropertiesMap.at(key)[s] & XSPM_HOST_PROPERTY_MASK)
             continue;
 
           std::string cuPortName = mDeviceBinaryDataSlotsMap.at(key)[s];
@@ -607,12 +690,8 @@ namespace xdp {
         uint64_t totalWriteBytes = 0;
         uint64_t totalReadTranx  = 0;
         uint64_t totalWriteTranx = 0;
-        if (HostSlotIndex == 0)
-          s = numHostSlots;
-        else 
-          s = 0;
-        for (; s < numSlots; ++s) {
-          if (s == HostSlotIndex)
+        for (unsigned s=0; s < numSlots; ++s) {
+          if (mDataSlotsPropertiesMap.at(key)[s] & XSPM_HOST_PROPERTY_MASK)
             continue;
 
           std::string cuPortName = mDeviceBinaryDataSlotsMap.at(key)[s];

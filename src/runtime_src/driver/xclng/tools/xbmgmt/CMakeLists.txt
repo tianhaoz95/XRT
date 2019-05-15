@@ -15,10 +15,12 @@ set(XBMGMT_SRC ${XBMGMT_FILES})
 add_executable(xbmgmt ${XBMGMT_SRC})
 
 target_link_libraries(xbmgmt
-  xrt_corestatic
+  xrt_core_static
+  xrt_coreutil_static
   pthread
   boost_filesystem
   boost_system
+  uuid
   )
 
 install (TARGETS xbmgmt RUNTIME DESTINATION ${XRT_INSTALL_DIR}/bin)

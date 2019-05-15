@@ -97,6 +97,13 @@ int zocl_execbuf_ioctl(struct drm_device *dev, void *data,
 		struct drm_file *filp);
 int zocl_read_axlf_ioctl(struct drm_device *dev, void *data,
 		struct drm_file *filp);
+int zocl_sk_getcmd_ioctl(struct drm_device *dev, void *data,
+		struct drm_file *filp);
+int zocl_sk_create_ioctl(struct drm_device *dev, void *data,
+		struct drm_file *filp);
+int zocl_sk_report_ioctl(struct drm_device *dev, void *data,
+		struct drm_file *filp);
+
 void zocl_describe(const struct drm_zocl_bo *obj);
 
 void zocl_free_userptr_bo(struct drm_gem_object *obj);
@@ -112,5 +119,8 @@ int zocl_init_sysfs(struct device *dev);
 void zocl_fini_sysfs(struct device *dev);
 void zocl_free_sections(struct drm_zocl_dev *zdev);
 void zocl_free_bo(struct drm_gem_object *obj);
+void zocl_update_mem_stat(struct drm_zocl_dev *zdev, u64 size, int count);
+
+int get_apt_index(struct drm_zocl_dev *zdev, phys_addr_t addr);
 
 #endif

@@ -71,11 +71,10 @@ namespace xdp {
     writeTableRowEnd(getStream());
   }
 
-  // Write data transfer event to trace
-  void TraceWriterI::writeTransfer(double traceTime, const std::string& commandString,
+  // Compute Unit events from sw
+  void TraceWriterI::writeCu(double traceTime, const std::string& commandString,
             const std::string& stageString, const std::string& eventString,
-            const std::string& dependString, size_t size, uint64_t address,
-            const std::string& bank, std::thread::id threadId)
+            const std::string& dependString, uint64_t objId, size_t size, uint32_t cuId)
   {
     if (!Trace_ofs.is_open())
       return;
@@ -83,14 +82,49 @@ namespace xdp {
     std::stringstream timeStr;
     timeStr << std::setprecision(10) << traceTime;
 
-    // Write out DDR physical address and bank
-    // NOTE: thread ID is only valid for START and END
+    std::stringstream strObjId;
+    strObjId << std::showbase << std::hex << std::uppercase << objId;
+
+    writeTableRowStart(getStream());
+    writeTableCells(getStream(), timeStr.str(), commandString,
+        stageString, strObjId.str(), size, std::to_string(cuId), "", "", "", "", "",
+        eventString, dependString);
+    writeTableRowEnd(getStream());
+  }
+
+  // Write read/write/copy data transfer event to trace
+  void TraceWriterI::writeTransfer(double traceTime, RTUtil::e_profile_command_kind kind,
+  	        const std::string& commandString, const std::string& stageString,
+            const std::string& eventString, const std::string& dependString, size_t size,
+            uint64_t srcAddress, const std::string& srcBank,
+            uint64_t dstAddress, const std::string& dstBank,
+  			std::thread::id threadId)
+  {
+    if (!Trace_ofs.is_open())
+      return;
+
+    std::stringstream timeStr;
+    timeStr << std::setprecision(10) << traceTime;
+
+    // Write out DDR physical addresses, banks, etc.
+    //
+    // Field format:
+    //   Read/write:
+    //     QUEUE/SUBMIT: address|bank
+    //     START/END:    address|bank|threadID
+    //   Copy:
+    //     QUEUE/SUBMIT: srcAddress|srcBank
+    //     START/END:    srcAddress|srcBank|threadID|dstAddress|dstBank|p2p
     std::stringstream strAddress;
-    strAddress << (boost::format("0X%09x") % address) << "|" << std::dec << bank;
-    //strAddress << std::showbase << std::hex << std::uppercase << address
-    //		   << "|" << std::dec << bank;
-    if (stageString == "START" || stageString == "END")
-      strAddress << "|" << std::showbase << std::hex << std::uppercase << threadId;
+    strAddress << (boost::format("0X%09x") % srcAddress) << "|" << srcBank;
+    if (stageString == "START" || stageString == "END") {
+      strAddress << "|" << (boost::format("0X%x") % threadId);
+
+      if (kind == RTUtil::COPY_BUFFER || kind == RTUtil::COPY_BUFFER_P2P) {
+        int p2p = (kind == RTUtil::COPY_BUFFER_P2P) ? 1 : 0;
+        strAddress << "|" << (boost::format("0X%09x") % dstAddress) << "|" << dstBank << "|" << p2p;
+      }
+    }
 
     writeTableRowStart(getStream());
     writeTableCells(getStream(), timeStr.str(), commandString,
@@ -295,6 +329,14 @@ namespace xdp {
         else {
           if (tr.Kind == DeviceTrace::DEVICE_STREAM){
             mPluginHandle->getProfileSlotName(XCL_PERF_MON_STR, deviceName, tr.SlotNum, cuPortName);
+            size_t sepIndex = cuPortName.find(IP_LAYOUT_SEP);
+            // New format : "MasterName-SlaveName"
+            if (sepIndex != std::string::npos) {
+              auto slaveName = cuPortName.substr(sepIndex + 1);
+              auto masterName = cuPortName.substr(0, sepIndex);
+              auto cuFound = masterName.find_first_of("/");
+              cuPortName = (cuFound == std::string::npos) ? slaveName : masterName;
+            }
           }
           else {
             mPluginHandle->getProfileSlotName(XCL_PERF_MON_MEMORY, deviceName, tr.SlotNum, cuPortName);
@@ -324,11 +366,11 @@ namespace xdp {
         traceName = traceName.substr(0, pos);
         
         writeTableRowStart(getStream());
-        writeTableCells(getStream(), startStr.str(), traceName, "START", "", workGroupSize);
+        writeTableCells(getStream(), startStr.str(), traceName, "START", "", workGroupSize, tr.EventID);
         writeTableRowEnd(getStream());
 
         writeTableRowStart(getStream());
-        writeTableCells(getStream(), endStr.str(), traceName, "END", "", workGroupSize);
+        writeTableCells(getStream(), endStr.str(), traceName, "END", "", workGroupSize, tr.EventID);
         writeTableRowEnd(getStream());
         continue;
       }

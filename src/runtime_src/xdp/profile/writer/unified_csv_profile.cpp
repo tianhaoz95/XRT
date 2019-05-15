@@ -32,7 +32,7 @@ namespace xdp {
       assert(!Summary_ofs.is_open());
       SummaryFileName += FileExtension;
       openStream(Summary_ofs, SummaryFileName);
-      writeDocumentHeader(Summary_ofs, "SDx Profile Summary");
+      writeDocumentHeader(Summary_ofs, "Unified Profile Summary");
     }
   }
 
@@ -123,7 +123,7 @@ namespace xdp {
         HostTransferColumnLabels);
     if (mPluginHandle->getFlowMode() != xdp::RTUtil::CPU
         && mPluginHandle->getFlowMode() != xdp::RTUtil::COSIM_EM) {
-      profile->writeHostTransferSummary(this);
+      profile->writeTransferSummary(this, xdp::RTUtil::MON_HOST_DYNAMIC);
     }
     writeTableFooter(getStream());
 
@@ -150,9 +150,7 @@ namespace xdp {
       "Parameter", "Element", "Value"
     };
     writeTableHeader(getStream(), "PRC Parameters", PRCParameterColumnLabels);
-    writeGuidanceMetadataSummary(profile, mPluginHandle->getDeviceExecTimesMap(), 
-                                          mPluginHandle->getComputeUnitCallsMap(),
-                                          mPluginHandle->getKernelCountsMap());
+    writeGuidanceMetadataSummary(profile);
     writeTableFooter(getStream());
   }
 

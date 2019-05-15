@@ -21,6 +21,7 @@
  * This file contains xocl core object helper code for profiling
  */
 
+#include "xdp/profile/device/device_intf.h"
 #include "driver/include/xclperf.h"
 #include "driver/include/xcl_app_debug.h"
 #include "xocl/core/object.h"
@@ -34,7 +35,6 @@
 #include "xocl/core/range.h"
 #include "xocl/core/execution_context.h"
 #include "xocl/xclbin/xclbin.h"
-
 #include <map>
 #include <memory>
 #include <cmath>
@@ -129,6 +129,9 @@ isValidPerfMonTypeTrace(key k, xclPerfMonType type);
 bool 
 isValidPerfMonTypeCounters(key k, xclPerfMonType type);
 
+bool
+is_ap_ctrl_chain(key k, const std::string& deviceName, const std::string& cu);
+
 //
 // Device
 //
@@ -146,6 +149,7 @@ struct data
   uint32_t mLastTraceNumSamples[XCL_PERF_MON_TOTAL_PROFILE] = {0};
   std::chrono::steady_clock::time_point mLastCountersSampleTime;
   std::chrono::steady_clock::time_point mLastTraceTrainingTime[XCL_PERF_MON_TOTAL_PROFILE];
+  DeviceIntf mDeviceIntf;
 };
 
 void
@@ -195,6 +199,9 @@ logCounters(key k, xclPerfMonType type, bool firstReadAfterProgram, bool forceRe
 
 cl_int
 debugReadIPStatus(key k, xclDebugReadType type, void*  aDebugResults);
+
+bool
+isAPCtrlChain(key k, const std::string& cu);
 
 } // device
 } // platform

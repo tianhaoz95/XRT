@@ -82,11 +82,14 @@ target_link_libraries (xdp xrt_core xilinxopencl)
 
 install (TARGETS xdp LIBRARY DESTINATION ${XRT_INSTALL_DIR}/lib)
 
-install (FILES "${XRT_XDP_PROFILE_XMA_PLUGIN_DIR}/xma_profile.h" DESTINATION ${XRT_INSTALL_DIR}/include)
+install (FILES "${XRT_XDP_PROFILE_XMA_PLUGIN_DIR}/xma_profile.h" DESTINATION ${XRT_INSTALL_INCLUDE_DIR})
 
+# Only install these files for PCIe device for now, which is .
+if (${XRT_NATIVE_BUILD} STREQUAL "yes")
 set (APPDEBUG_INSTALL_PREFIX "/opt/xilinx/xrt/share/appdebug")
 install (FILES
   ${XRT_XDP_APPDEBUG_DIR}/appdebug.py
   ${XRT_XDP_APPDEBUG_DIR}/appdebugint.py
   DESTINATION ${APPDEBUG_INSTALL_PREFIX}
 )
+endif()

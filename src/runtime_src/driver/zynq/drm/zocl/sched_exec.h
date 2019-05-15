@@ -1,8 +1,7 @@
-/**
- * Compute unit execution, interrupt management and
+/** * Compute unit execution, interrupt management and
  * client context core data structures.
  *
- * Copyright (C) 2017 Xilinx, Inc. All rights reserved.
+ * Copyright (C) 2017-2019 Xilinx, Inc. All rights reserved.
  *
  * Authors:
  *    Sonal Santan <sonal.santan@xilinx.com>
@@ -28,10 +27,18 @@
 #include "zocl_drv.h"
 
 #define MAX_SLOTS 128
-#define MAX_CUS 128
 #define MAX_U32_SLOT_MASKS (((MAX_SLOTS-1)>>5) + 1)
-#define MAX_U32_CU_MASKS (((MAX_CUS-1)>>5) + 1)
+/* MAX_CU_NUM are defined in zocl_util.h */
+#define MAX_U32_CU_MASKS (((MAX_CU_NUM-1)>>5) + 1)
 #define U32_MASK 0xFFFFFFFF
+
+/**
+ * Timestamp only use in set_cmd_ext_timestamp()
+ */
+enum zocl_ts_type {
+	CU_START_TIME,
+	CU_DONE_TIME,
+};
 
 /**
  * Address constants per spec
@@ -40,6 +47,11 @@
 #define CQ_SIZE                       0x10000    /* 64K */
 #define CQ_BASE_ADDR                  0x190000
 #define CSR_ADDR                      0x180000
+
+enum zocl_cu_type {
+	ZOCL_HARD_CU,
+	ZOCL_SOFT_CU,
+};
 
 struct sched_dev;
 struct sched_ops;
@@ -69,13 +81,19 @@ enum cmd_state {
  * @OP_START_CU:       start a workgroup on a CU
  * @OP_START_KERNEL:   currently aliased to ERT_START_CU
  * @OP_CONFIGURE:      configure command scheduler
+ * @OP_CONFIG_SKERNEL: configure soft kernel
+ * @OP_START_SKERNEL:  start soft kernel
+ * @OP_SK_UNCONFIG:    unconfigure a soft kernel
  */
 enum cmd_opcode {
-	OP_START_CU     = 0,
-	OP_START_KERNEL = 0,
-	OP_CONFIGURE    = 2,
-	OP_STOP         = 3,
-	OP_ABORT        = 4,
+	OP_START_CU		= 0,
+	OP_START_KERNEL		= 0,
+	OP_CONFIGURE		= 2,
+	OP_STOP			= 3,
+	OP_ABORT		= 4,
+	OP_CONFIG_SKERNEL	= 8,
+	OP_START_SKERNEL	= 9,
+	OP_UNCONFIG_SKERNEL	= 10,
 };
 
 /**
@@ -191,6 +209,68 @@ struct configure_cmd {
 };
 
 /**
+ * struct configure_sk_cmd: configure soft kernel command format
+ *
+ * @state:           [3-0] current state of a command
+ * @count:           [22-12] number of words in payload (5 + num_cus)
+ * @opcode:          [27-23] 1, opcode for configure
+ * @type:            [31-27] 0, type of configure
+ *
+ * @start_cuidx:     start index of compute units
+ * @num_cus:         number of compute units in program
+ * @sk_size:         size in bytes of soft kernel image
+ * @sk_name:         symbol name of soft kernel
+ * @sk_addr:         soft kernel image's physical address (little endian)
+ */
+struct configure_sk_cmd {
+	union {
+		struct {
+			uint32_t state:4;          /* [3-0]   */
+			uint32_t unused:8;         /* [11-4]  */
+			uint32_t count:11;         /* [22-12] */
+			uint32_t opcode:5;         /* [27-23] */
+			uint32_t type:4;           /* [31-27] */
+		};
+		uint32_t header;
+	};
+
+	/* payload */
+	uint32_t start_cuidx;
+	uint32_t num_cus;
+	uint32_t sk_size;
+	uint32_t sk_name[8];
+	uint64_t sk_addr;
+};
+
+/**
+ * struct unconfigure_sk_cmd: unconfigure soft kernel command format
+ *
+ * @state:           [3-0] current state of a command
+ * @count:           [22-12] number of words in payload (5 + num_cus)
+ * @opcode:          [27-23] 1, opcode for configure
+ * @type:            [31-27] 0, type of configure
+ *
+ * @start_cuidx:     start index of compute units
+ * @num_cus:         number of compute units in program
+ */
+struct unconfigure_sk_cmd {
+	union {
+		struct {
+			uint32_t state:4;          /* [3-0]   */
+			uint32_t unused:8;         /* [11-4]  */
+			uint32_t count:11;         /* [22-12] */
+			uint32_t opcode:5;         /* [27-23] */
+			uint32_t type:4;           /* [31-27] */
+		};
+		uint32_t header;
+	};
+
+	/* payload */
+	uint32_t start_cuidx;
+	uint32_t num_cus;
+};
+
+/**
  * struct abort_cmd: abort command format.
  *
  * @idx: The slot index of command to abort
@@ -233,6 +313,8 @@ struct sched_client_ctx {
  * @num_slot_masks: Number of slots status masks used
  * @cu_status: Status (busy(1)/free(0)) of CUs. Unused in ERT mode.
  * @num_cu_masks: Number of CU masks used (computed from @num_cus)
+ * @cu_addr_phy: Physical address of CUs.
+ * @cu_usage: How many times the CUs are excecuted.
  * @ops: Scheduler operations vtable
  */
 struct sched_exec_core {
@@ -262,6 +344,13 @@ struct sched_exec_core {
 	u32                        cu_status[MAX_U32_CU_MASKS];
 	unsigned int               num_cu_masks; /* ((num_cus-1)>>5+1 */
 
+	/* Soft kernel definitions */
+	u32                        scu_status[MAX_U32_CU_MASKS];
+
+	u32                        cu_addr_phy[MAX_CU_NUM];
+	void __iomem              *cu_addr_virt[MAX_CU_NUM];
+	u32                        cu_usage[MAX_CU_NUM];
+
 	struct sched_ops          *ops;
 	struct task_struct        *cq_thread;
 	wait_queue_head_t          cq_wait_queue;
@@ -276,6 +365,7 @@ struct sched_exec_core {
  * @error: set to 1 to indicate scheduler error
  * @stop: set to 1 to indicate scheduler should stop
  * @cq: list of command objects managed by scheduler
+ * @intc: set when there is a pending interrupt for command completion
  * @poll: number of running commands in polling mode
  */
 struct scheduler {
@@ -287,6 +377,7 @@ struct scheduler {
 	unsigned int               stop;
 
 	struct list_head           cq;
+	unsigned int               intc; /* pending intr shared with isr*/
 	unsigned int               poll; /* number of cmds to poll */
 };
 
@@ -305,6 +396,7 @@ struct sched_cmd {
 	struct list_head list;
 	struct drm_device *ddev;
 	struct scheduler *sched;
+	struct sched_exec_core *exec;
 	enum cmd_state state;
 	int cu_idx; /* running cu, initialized to -1 */
 	int slot_idx;

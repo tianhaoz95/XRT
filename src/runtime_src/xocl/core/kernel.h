@@ -352,7 +352,7 @@ public:
   {
   public:
     stream_argument(arginfo_type arg, kernel* kernel)
-      : argument(kernel), m_arg_info(arg) {}
+      : argument(kernel), m_arg_info(arg) { m_set = true; }
     virtual std::unique_ptr<argument> clone();
     virtual void set(size_t sz, const void* arg);
     virtual argtype get_argtype() const { return m_arg_info->atype; }
@@ -583,6 +583,16 @@ public:
   }
 
   /**
+   * @return
+   *  Number of CUs that can be used by this kernel object
+   */
+  size_t
+  get_num_cus() const
+  {
+    return m_cus.size();
+  }
+
+  /**
    * Get the set of memory banks an argument can connect to given the
    * current set of kernel compute units for specified device
    *
@@ -602,13 +612,15 @@ public:
    * Internal validated list of CUs is updated / trimmed to those that
    * support argument at @argidx connected to memory bank at @memidx
    *
+   * @param dev
+   *  Targeted device for connectivity check
    * @param argidx
    *  The argument index to validate
    * @param memidx
    *  The memory index that must be used by argument
    */
   size_t
-  validate_cus(unsigned long argidx, int memidx) const;
+  validate_cus(const device* dev, unsigned long argidx, int memidx) const;
 
   /**
    * Error message for exceptions when connectivity checks fail
@@ -656,6 +668,16 @@ private:
   argument_vector_type m_progvar_args;
   argument_vector_type m_rtinfo_args;
 };
+
+namespace kernel_utils {
+
+std::string
+normalize_kernel_name(const std::string& kernel_name);
+
+std::vector<std::string>
+get_cu_names(const std::string& kernel_name);
+
+} // kernel_utils
 
 } // xocl
 

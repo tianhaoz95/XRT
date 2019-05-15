@@ -20,10 +20,7 @@
 
 #include <shim.h>
 
-//########################################## THESE HAS TO BE DEFINED START ##########################################
-
-
-int xclExportBO(xclDeviceHandle handle, unsigned int boHandle) 
+int xclExportBO(xclDeviceHandle handle, unsigned int boHandle)
 {
   xclhwemhal2::HwEmShim *drv = xclhwemhal2::HwEmShim::handleCheck(handle);
   if (!drv)
@@ -31,7 +28,7 @@ int xclExportBO(xclDeviceHandle handle, unsigned int boHandle)
   return drv->xclExportBO(boHandle);
 }
 
-unsigned int xclImportBO(xclDeviceHandle handle, int boGlobalHandle, unsigned flags) 
+unsigned int xclImportBO(xclDeviceHandle handle, int boGlobalHandle, unsigned flags)
 {
   xclhwemhal2::HwEmShim *drv = xclhwemhal2::HwEmShim::handleCheck(handle);
   if (!drv)
@@ -44,9 +41,6 @@ int xclCopyBO(xclDeviceHandle handle, unsigned int dst_boHandle, unsigned int sr
   xclhwemhal2::HwEmShim *drv = xclhwemhal2::HwEmShim::handleCheck(handle);
   return drv ? drv->xclCopyBO(dst_boHandle, src_boHandle, size, dst_offset, src_offset) : -ENODEV;
 }
-
-
-//########################################## THESE HAS TO BE DEFINED END ##########################################
 
 int xclResetDevice(xclDeviceHandle handle, xclResetKind kind)
 {
@@ -101,7 +95,7 @@ void *xclMapBO(xclDeviceHandle handle, unsigned int boHandle, bool write)
   return drv->xclMapBO(boHandle, write);
 }
 
-int xclSyncBO(xclDeviceHandle handle, unsigned int boHandle, xclBOSyncDirection dir, size_t size, size_t offset) 
+int xclSyncBO(xclDeviceHandle handle, unsigned int boHandle, xclBOSyncDirection dir, size_t size, size_t offset)
 {
   xclhwemhal2::HwEmShim *drv = xclhwemhal2::HwEmShim::handleCheck(handle);
   if (!drv)
@@ -140,6 +134,21 @@ int xclExecBuf(xclDeviceHandle handle, unsigned int cmdBO)
     return -1;
   return drv->xclExecBuf(cmdBO);
 }
+
+
+//defining following two functions as they gets called in scheduler init call
+int xclOpenContext(xclDeviceHandle handle, uuid_t xclbinId, unsigned int ipIndex, bool shared)
+  
+{
+  return 0;
+}
+
+int xclCloseContext(xclDeviceHandle handle, uuid_t xclbinId, unsigned ipIndex)
+{
+  return 0;
+}
+
+
 
 int xclRegisterEventNotify(xclDeviceHandle handle, unsigned int userInterrupt, int fd)
 {
@@ -201,7 +210,7 @@ unsigned xclProbe()
 {
   if(!xclemulation::isXclEmulationModeHwEmuOrSwEmu())
   {
-    std::string initMsg ="ERROR: [SDx-EM 08] Please set XCL_EMULATION_MODE to \"hw_emu\" to run hardware emulation. ";
+    std::string initMsg ="ERROR: [HW-EM 08] Please set XCL_EMULATION_MODE to \"hw_emu\" to run hardware emulation. ";
     std::cout<<initMsg<<std::endl;
     return 0;
   }
@@ -231,7 +240,7 @@ unsigned int xclAllocUserPtrBO(xclDeviceHandle handle, void *userptr, size_t siz
   xclhwemhal2::HwEmShim *drv = xclhwemhal2::HwEmShim::handleCheck(handle);
   if (!drv)
     return mNullBO;
-  return drv->xclAllocUserPtrBO(userptr,size,flags); 
+  return drv->xclAllocUserPtrBO(userptr,size,flags);
 }
 
 xclDeviceHandle xclOpen(unsigned deviceIndex, const char *logfileName, xclVerbosityLevel level)
@@ -282,7 +291,7 @@ xclDeviceHandle xclOpen(unsigned deviceIndex, const char *logfileName, xclVerbos
     handle->xclOpen(logfileName);
     if(bDefaultDevice)
     {
-      std::string sDummyDeviceMsg ="CRITICAL WARNING: [SDx-EM 08-0] Unable to find emconfig.json. Using default device \"xilinx:pcie-hw-em:7v3:1.0\"";
+      std::string sDummyDeviceMsg ="CRITICAL WARNING: [HW-EM 08-0] Unable to find emconfig.json. Using default device \"xilinx:pcie-hw-em:7v3:1.0\"";
       handle->logMessage(sDummyDeviceMsg);
     }
   }
@@ -306,7 +315,10 @@ int xclLoadXclBin(xclDeviceHandle handle, const xclBin *buffer)
   xclhwemhal2::HwEmShim *drv = xclhwemhal2::HwEmShim::handleCheck(handle);
   if (!drv)
     return -1;
-  return drv->xclLoadXclBin(buffer);
+  auto ret = drv->xclLoadXclBin(buffer);
+  if (!ret)
+      ret = xrt_core::scheduler::init(handle, buffer);
+  return ret;
 }
 
 size_t xclWrite(xclDeviceHandle handle, xclAddressSpace space, uint64_t offset, const void *hostBuf, size_t size)
@@ -390,6 +402,14 @@ size_t xclPerfMonClockTraining(xclDeviceHandle handle, xclPerfMonType type)
   return drv->xclPerfMonClockTraining();
 }
 
+void xclPerfMonConfigureDataflow(xclDeviceHandle handle, xclPerfMonType type, unsigned *ip_config)
+{
+  xclhwemhal2::HwEmShim *drv = xclhwemhal2::HwEmShim::handleCheck(handle);
+  if (!drv)
+    return;
+  return drv->xclPerfMonConfigureDataflow(type, ip_config);
+}
+
 size_t xclPerfMonStartCounters(xclDeviceHandle handle, xclPerfMonType type)
 {
   xclhwemhal2::HwEmShim *drv = xclhwemhal2::HwEmShim::handleCheck(handle);
@@ -446,6 +466,19 @@ size_t xclPerfMonReadTrace(xclDeviceHandle handle, xclPerfMonType type, xclTrace
   return drv->xclPerfMonReadTrace(type,traceVector);
 }
 
+ssize_t xclUnmgdPwrite(xclDeviceHandle handle, unsigned flags, const void *buf, size_t count, uint64_t offset)
+{
+  xclhwemhal2::HwEmShim *drv = xclhwemhal2::HwEmShim::handleCheck(handle);
+  return drv ? drv->xclUnmgdPwrite(flags, buf, count, offset) : -ENODEV;
+}
+
+ssize_t xclUnmgdPread(xclDeviceHandle handle, unsigned flags, void *buf, size_t count, uint64_t offset)
+{
+  xclhwemhal2::HwEmShim *drv = xclhwemhal2::HwEmShim::handleCheck(handle);
+  return drv ? drv->xclUnmgdPread(flags, buf, count, offset) : -ENODEV;
+}
+
+
 //QDMA Support
 //
 
@@ -494,5 +527,24 @@ int xclPollCompletion(xclDeviceHandle handle, int min_compl, int max_compl, xclR
 {
    xclhwemhal2::HwEmShim *drv = xclhwemhal2::HwEmShim::handleCheck(handle);
   return drv ? drv->xclPollCompletion(min_compl, max_compl, comps, actual, timeout) : -ENODEV;
+}
+
+/*
+ * API to get number of live processes. 
+ * Applicable only for System Flow as it supports Multiple processes on same device.
+ * For Hardware Emulation, return 0
+ */
+uint xclGetNumLiveProcesses(xclDeviceHandle handle)
+{
+    return 0;
+}
+
+int xclLogMsg(xclDeviceHandle handle, xrtLogMsgLevel level, const char* tag, const char* format, ...)
+{
+  va_list args;
+  va_start(args, format);
+  int ret = xclhwemhal2::HwEmShim::xclLogMsg(handle, level, tag, format, args);
+  va_end(args);
+  return ret;
 }
 

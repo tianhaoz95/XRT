@@ -199,12 +199,12 @@ unsigned selectDSA(unsigned idx, std::string& dsa, uint64_t ts)
     {
         if (installedDSA.empty())
         {
-            std::cout << "no DSA installed" << std::endl;
+            std::cout << "no shell installed" << std::endl;
             return candidateDSAIndex;
         }
         else if (installedDSA.size() > 1)
         {
-            std::cout << "multiple DSA installed" << std::endl;
+            std::cout << "multiple shell installed" << std::endl;
             return candidateDSAIndex;
         }
         else
@@ -223,7 +223,7 @@ unsigned selectDSA(unsigned idx, std::string& dsa, uint64_t ts)
                 continue;
             if (candidateDSAIndex != UINT_MAX)
             {
-                std::cout << "multiple DSA installed" << std::endl;
+                std::cout << "multiple shell installed" << std::endl;
                 return candidateDSAIndex;
             }
             candidateDSAIndex = i;
@@ -232,7 +232,7 @@ unsigned selectDSA(unsigned idx, std::string& dsa, uint64_t ts)
 
     if (candidateDSAIndex == UINT_MAX)
     {
-        std::cout << "specified DSA not applicable" << std::endl;
+        std::cout << "specified shell not applicable" << std::endl;
         return candidateDSAIndex;
     }
 
@@ -250,10 +250,10 @@ unsigned selectDSA(unsigned idx, std::string& dsa, uint64_t ts)
     }
     if (same_dsa && same_bmc)
     {
-        std::cout << "DSA on FPGA is up-to-date" << std::endl;
+        std::cout << "Shell on FPGA is up-to-date" << std::endl;
         return UINT_MAX;
     }
-    std::cout << "DSA on FPGA needs updating" << std::endl;
+    std::cout << "Shell on FPGA needs updating" << std::endl;
     return candidateDSAIndex;
 }
 
@@ -301,11 +301,11 @@ int updateDSA(unsigned boardIdx, unsigned dsaIdx, bool& reboot)
 
     if (!same_dsa)
     {
-        std::cout << "Updating DSA on card[" << boardIdx << "]" << std::endl;
+        std::cout << "Updating shell on card[" << boardIdx << "]" << std::endl;
         int ret = flashDSA(flasher, candidate);
         if (ret != 0)
         {
-            std::cout << "ERROR: Failed to update DSA on card["
+            std::cout << "ERROR: Failed to update shell on card["
                 << boardIdx << "]" << std::endl;
         } else {
             updated_dsa = true;
@@ -437,11 +437,12 @@ int xcldev::flash_helper(int argc, char *argv[])
     bool seen_n = false;
     bool seen_o = false;
     bool seen_p = false;
+    bool seen_r = false;
     bool seen_t = false;
     T_Arguments args;
 
     int opt;
-    while( ( opt = getopt( argc, argv, "a:d:fm:n:o:p:t:" ) ) != -1 )
+    while( ( opt = getopt( argc, argv, "a:d:fm:n:o:p:rt:" ) ) != -1 )
     {
         switch( opt )
         {
@@ -489,6 +490,9 @@ int xcldev::flash_helper(int argc, char *argv[])
             notSeenOrDie(seen_t);
             args.timestamp = strtoull(optarg, nullptr, 0);
             break;
+        case 'r':
+            notSeenOrDie(seen_r);
+            break;
         default:
             usageAndDie();
             break;
@@ -499,6 +503,7 @@ int xcldev::flash_helper(int argc, char *argv[])
         // Combination of options not expected.
         (seen_p && (seen_m || seen_n || seen_o))    ||
         (seen_a && (seen_m || seen_n || seen_o))    ||
+        (seen_r && (seen_m || seen_n || seen_o || seen_p || seen_a || seen_t)) ||
         (seen_t && (!seen_a || args.dsa.compare("all") == 0)))
     {
         usageAndDie();
@@ -506,8 +511,8 @@ int xcldev::flash_helper(int argc, char *argv[])
 
     int ret = 0;
 
-    // Manually specify DSA/BMC files.
-    if (args.dsa.empty())
+    // Manually specify DSA/BMC files or revert to MFG.
+    if (args.dsa.empty() || seen_r)
     {
         // By default, only flash the first board.
         if (args.devIdx == UINT_MAX)
@@ -527,13 +532,30 @@ int xcldev::flash_helper(int argc, char *argv[])
         }
         else
         {
-            ret = flasher.upgradeFirmware(args.flasherType,
-                args.primary.get(), args.secondary.get());
-            if (ret == 0)
-            {
-                std::cout << "DSA image flashed succesfully" << std::endl;
-                std::cout << "Cold reboot machine to load the new image on FPGA"
+            if (seen_r) {
+                std::cout << "CAUTION: Reverting board back to MFG mode."
                     << std::endl;
+                if (canProceed()) {
+                    ret = flasher.upgradeFirmware(args.flasherType,
+                        nullptr, nullptr);
+                    if (ret == 0)
+                    {
+                        std::cout <<
+                            "Cold reboot machine to revert board to MFG mode" <<
+                            std::endl;
+                    }
+                }
+            }
+            else
+            {
+                ret = flasher.upgradeFirmware(args.flasherType,
+                    args.primary.get(), args.secondary.get());
+                if (ret == 0)
+                {
+                    std::cout << "Shell image flashed succesfully" << std::endl;
+                    std::cout << "Cold reboot machine to load new image on FPGA"
+                        << std::endl;
+                }
             }
         }
 
@@ -566,12 +588,12 @@ int xcldev::flash_helper(int argc, char *argv[])
         }
         if (!foundDSA)
         {
-            std::cout << "Specified DSA not installed." << std::endl;
+            std::cout << "Specified shell not installed." << std::endl;
             exit(-ENOENT);
         }
         if (multiDSA)
         {
-            std::cout << "Specified DSA matched more than one installed DSA"
+            std::cout << "Specified shell matched more than one installed shell"
                 << std::endl;
             exit (-ENOTUNIQ);
         }
@@ -608,7 +630,7 @@ int xcldev::flash_helper(int argc, char *argv[])
     bool needreboot = false;
     if (!boardsToUpdate.empty())
     {
-        std::cout << "DSA on below card(s) will be updated:" << std::endl;
+        std::cout << "Shell on below card(s) will be updated:" << std::endl;
         for (auto p : boardsToUpdate)
         {
             std::cout << "Card [" << p.first << "]" << std::endl;
@@ -651,7 +673,7 @@ int main( int argc, char *argv[])
 
     unsigned index = 0xffffffff;
     unsigned regionIndex = 0xffffffff;
-    unsigned short targetFreq[2] = {0, 0};
+    unsigned short targetFreq[4] = {0, 0, 0, 0};
     std::string outMemReadFile = "memread.out";
     std::string flashType = ""; // unset and empty by default
     std::string mcsFile1, mcsFile2;
@@ -704,7 +726,7 @@ int main( int argc, char *argv[])
     };
 
     int long_index;
-    const char* short_options = "a:b:c:d:e:f:g:hi:m:n:o:p:r:s"; //don't add numbers
+    const char* short_options = "a:b:c:d:e:f:g:h:i:m:n:o:p:r:s"; //don't add numbers
     while ((c = getopt_long(argc, argv, short_options, long_options, &long_index)) != -1)
     {
         if (cmd == xcldev::LIST) {
@@ -794,11 +816,14 @@ int main( int argc, char *argv[])
             break;
         case 'h':
         {
-            if (cmd != xcldev::RESET) {
-                std::cout << "ERROR: '-h' only allowed with 'reset' command\n";
+            if (cmd == xcldev::RESET)
+                hot = true;
+            else if (cmd == xcldev::CLOCK)
+                targetFreq[2] = std::atoi(optarg);
+            else {
+                std::cout << "ERROR: '-h' only allowed with 'reset' or 'clock' command\n";
                 return -1;
             }
-            hot = true;
             break;
         }
         case 'd': {
@@ -837,8 +862,8 @@ int main( int argc, char *argv[])
         }
         case xcldev::CLOCK:
         {
-            if (!targetFreq[0] && !targetFreq[1]) {
-                std::cout << "ERROR: Please specify frequency(ies) with '-f' and or '-g' switch(es)\n";
+            if (!targetFreq[0] && !targetFreq[1] && !targetFreq[2]) {
+                std::cout << "ERROR: Please specify frequency(ies) with '-f' and or '-g' and or '-h' switch(es)\n";
                 return -1;
             }
             break;
@@ -850,14 +875,13 @@ int main( int argc, char *argv[])
    std::vector<std::unique_ptr<xcldev::device>> deviceVec;
 
     unsigned int total = pcidev::get_dev_total();
-    unsigned int count = pcidev::get_dev_ready();
     if (total == 0) {
         std::cout << "ERROR: No card found\n";
         return 1;
     }
     if (cmd != xcldev::DUMP)
-        std::cout << "INFO: Found total " << total << " card(s), "
-                  << count << " are usable" << std::endl;
+        std::cout << "INFO: Found total " << total << " card(s) "
+                  << std::endl;
 
     if (cmd == xcldev::SCAN) {
         print_pci_info();
@@ -885,10 +909,15 @@ int main( int argc, char *argv[])
 
     if (index >= deviceVec.size()) {
         if (index >= total)
-            std::cout << "ERROR: Card index " << index << "is out of range";
+            std::cout << "ERROR: Card index " << index << " is out of range";
         else
             std::cout << "ERROR: Card [" << index << "] is not ready";
         std::cout << std::endl;
+        return 1;
+    }
+
+    if(pcidev::get_dev(index)->mgmt == NULL){
+        std::cout << "ERROR: Card index " << index << " is not usable\n";
         return 1;
     }
 
@@ -948,17 +977,17 @@ void xcldev::printHelp(const std::string& exe)
     std::cout << "Running xbmgmt\n\n";
     std::cout << "Usage: " << exe << " <command> [options]\n\n";
     std::cout << "Command and option summary:\n";
-    std::cout << "  clock   [-d card] [-r region] [-f clock1_freq_MHz] [-g clock2_freq_MHz]\n";
+    std::cout << "  clock   [-d card] [-r region] [-f clock1_freq_MHz] [-g clock2_freq_MHz] [-h clock3_freq_MHz]\n";
     std::cout << "  dump\n";
     std::cout << "  help\n";
     std::cout << "  list\n";
     std::cout << "  mem --query-ecc [-d card]\n";
-    std::cout << "  mem --reset-ecc [-d card]\n";
     std::cout << "  program [-d card] [-r region] -p xclbin\n";
     std::cout << "  query   [-d card [-r region]]\n";
     std::cout << "  reset   [-d card] [-h | -r region]\n";
     std::cout << "  scan\n";
     std::cout << " Requires root privileges:\n";
+    std::cout << "  mem --reset-ecc [-d card]\n";
     std::cout << "  flash   [-d card] -m primary_mcs [-n secondary_mcs] [-o bpi|spi]\n";
     std::cout << "  flash   [-d card] -a <all | dsa> [-t timestamp]\n";
     std::cout << "  flash   [-d card] -p msp432_firmware\n";
@@ -1064,7 +1093,7 @@ int xcldev::device::runTestCase(const std::string& exe,
         output += exe;
         output += " or ";
         output += xclbin;
-        output += ", DSA package not installed properly.";
+        output += ", Shell package not installed properly.";
         return -ENOENT;
     }
 
@@ -1163,8 +1192,8 @@ int xcldev::device::printEccInfo(std::ostream& ostr) const
 
     // Report ECC status
     ostr << std::endl;
-    ostr << std::left << std::setw(16) << "Tag" << std::setw(12) << "Errors"
-        << std::setw(12) << "CE Count" << std::setw(20) << "CE FFA"
+    ostr << std::left << std::setw(8) << "Tag" << std::setw(12) << "Errors"
+        << std::setw(10) << "CE Count" << std::setw(10) << "UE Count" << std::setw(20) << "CE FFA"
         << std::setw(20) << "UE FFA" << std::endl;
     for (auto tag : tags) {
         unsigned status = 0;
@@ -1178,12 +1207,14 @@ int xcldev::device::printEccInfo(std::ostream& ostr) const
 
         unsigned ce_cnt = 0;
         dev->mgmt->sysfs_get(tag, "ecc_ce_cnt", errmsg, ce_cnt);
+        unsigned ue_cnt = 0;
+        dev->mgmt->sysfs_get(tag, "ecc_ue_cnt", errmsg, ue_cnt);
         uint64_t ce_ffa = 0;
         dev->mgmt->sysfs_get(tag, "ecc_ce_ffa", errmsg, ce_ffa);
         uint64_t ue_ffa = 0;
         dev->mgmt->sysfs_get(tag, "ecc_ue_ffa", errmsg, ue_ffa);
-        ostr << std::left << std::setw(16) << tag << std::setw(12) << st
-            << std::setw(12) << ce_cnt << "0x" << std::setw(18) << std::hex
+        ostr << std::left << std::setw(8) << tag << std::setw(12) << st << std::dec
+            << std::setw(10) << ce_cnt << std::setw(10) << ue_cnt << "0x" << std::setw(18) << std::hex
             << ce_ffa << "0x" << std::setw(18) << ue_ffa << std::endl;
     }
     ostr << std::endl;
@@ -1256,11 +1287,11 @@ int scanDevices(int argc, char *argv[])
         std::cout << "\tCard BDF:\t\t" << f.sGetDBDF() << std::endl;
         std::cout << "\tCard type:\t\t" << board.board << std::endl;
         std::cout << "\tFlash type:\t\t" << f.sGetFlashType() << std::endl;
-        std::cout << "\tDSA running on FPGA:" << std::endl;
+        std::cout << "\tShell running on FPGA:" << std::endl;
         std::cout << "\t\t" << board << std::endl;
 
         std::vector<DSAInfo> installedDSA = f.getInstalledDSA();
-        std::cout << "\tDSA package installed in system:\t";
+        std::cout << "\tShell package installed in system:\t";
         if (!installedDSA.empty())
         {
             for (auto& d : installedDSA)
@@ -1278,7 +1309,9 @@ int scanDevices(int argc, char *argv[])
         if (verbose && f.getBoardInfo(info) == 0)
         {
             std::cout << "\tCard name\t\t" << info.mName << std::endl;
+#if 0	// Do not print out rev until further notice
             std::cout << "\tCard rev\t\t" << info.mRev << std::endl;
+#endif
             std::cout << "\tCard S/N: \t\t" << info.mSerialNum << std::endl;
             std::cout << "\tConfig mode: \t\t" << info.mConfigMode << std::endl;
             std::cout << "\tFan presence:\t\t" << info.mFanPresence << std::endl;

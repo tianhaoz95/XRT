@@ -19,12 +19,13 @@
 #include "context.h"
 #include "device.h"
 #include "compute_unit.h"
+#include "driver/common/xclbin_parser.h"
 
 #include <sstream>
 #include <iostream>
 #include <memory>
 #include <algorithm>
-
+#include <regex>
 
 namespace xocl {
 
@@ -281,7 +282,7 @@ set(size_t size, const void* cvalue)
 
 kernel::
 kernel(program* prog, const std::string& name, const xclbin::symbol& symbol)
-  : m_program(prog), m_name(name), m_symbol(symbol)
+  : m_program(prog), m_name(kernel_utils::normalize_kernel_name(name)), m_symbol(symbol)
 {
   static unsigned int uid_count = 0;
   m_uid = uid_count++;
@@ -347,12 +348,14 @@ kernel(program* prog, const std::string& name, const xclbin::symbol& symbol)
     } // switch (arg.atype)
   }
 
-  // Collect CUs for all devices
+  auto cus = kernel_utils::get_cu_names(name);
   auto context = prog->get_context();
   for (auto device : context->get_device_range())
     for  (auto& scu : device->get_cus())
-      if (scu->get_symbol_uid()==get_symbol_uid())
+      if (scu->get_symbol_uid()==get_symbol_uid() && (cus.empty() || range_find(cus,scu->get_name())!=cus.end()))
         m_cus.push_back(scu.get());
+  if (m_cus.empty())
+    throw std::runtime_error("No kernel compute units matching '" + name + "'");
 }
 
 // TODO: remove and fix compilation of unit tests
@@ -418,7 +421,7 @@ get_memidx(const device* device, unsigned int argidx) const
 
 size_t
 kernel::
-validate_cus(unsigned long argidx, int memidx) const
+validate_cus(const device* device, unsigned long argidx, int memidx) const
 {
   XOCL_DEBUG(std::cout,"xocl::kernel::validate_cus(",argidx,",",memidx,")\n");
   xclbin::memidx_bitmask_type connections;
@@ -428,6 +431,14 @@ validate_cus(unsigned long argidx, int memidx) const
     auto cu = (*itr);
     auto cuconn = cu->get_memidx(argidx);
     if ((cuconn & connections).none()) {
+      auto axlf = device->get_axlf();
+      xrt::message::send
+        (xrt::message::severity_level::XRT_WARNING
+         , "Argument '" + std::to_string(argidx)
+         + "' of kernel '" + get_name()
+         + "' is allocated in memory bank '" + xrt_core::xclbin::memidx_to_name(axlf,memidx)
+         + "'; compute unit '" + cu->get_name()
+         + "' cannot be used with this argument and is ignored.");
       XOCL_DEBUG(std::cout,"xocl::kernel::validate_cus removing cu(",cu->get_uid(),") ",cu->get_name(),"\n");
       itr = m_cus.erase(itr);
       end = m_cus.end();
@@ -496,15 +507,15 @@ assign_buffer_to_argidx(memory* buf, unsigned long argidx)
     if (trim) {
       auto memidx = buf->get_memidx();
       assert(memidx>=0);
-      validate_cus(argidx,memidx);
+      validate_cus(device,argidx,memidx);
     }
   }
 
   if (m_cus.empty())
+    //connectivity_debug();
     throw xocl::error(CL_MEM_OBJECT_ALLOCATION_FAILURE,
                       "kernel '" + get_name() + "' "
-                      + "has no compute units to support required connectivity.\n"
-                      + connectivity_debug());
+                      + "has no compute units to support required argument connectivity.");
 }
 
 context*
@@ -523,5 +534,36 @@ get_instance_names() const
     instances.push_back(inst.name);
   return instances;
 }
+
+namespace kernel_utils {
+
+std::string
+normalize_kernel_name(const std::string& kname)
+{
+  // "kernel[:{cu}+]{0,1}"
+  const std::regex r("^(.+):\\{(([\\w]+)(,\\S+[^,\\s]*)*)\\}$");
+  std::smatch match;
+  if (std::regex_search(kname,match,r) && match[1].matched)
+    return match[1];
+  return kname;
+}
+
+std::vector<std::string>
+get_cu_names(const std::string& kname)
+{
+  // "kernel[:{cu}+]{0,1}"
+  std::vector<std::string> cus;
+  const std::regex r("^(.+):\\{(([\\w]+)(,\\S+[^,\\s]*)*)\\}$");
+  std::smatch match;
+  if (std::regex_search(kname,match,r) && match[2].matched) {
+    std::istringstream is(match[2]);
+    std::string cu;
+    while (std::getline(is,cu,','))
+      cus.push_back(cu);
+  }
+  return cus;
+}
+
+} // kernel_utils
 
 } // xocl

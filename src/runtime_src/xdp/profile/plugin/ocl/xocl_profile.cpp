@@ -17,6 +17,7 @@
 #include "xocl_profile.h"
 #include "ocl_profiler.h"
 #include "xdp/profile/config.h"
+#include "driver/include/xclbin.h"
 
 namespace xdp { namespace xoclp {
 
@@ -395,6 +396,20 @@ isValidPerfMonTypeCounters(key k, xclPerfMonType type)
   || ((profiler->getPlugin()->getFlowMode() == xdp::RTUtil::HW_EM) && type == XCL_PERF_MON_ACCEL));
 }
 
+bool
+is_ap_ctrl_chain(key k, const std::string& deviceName, const std::string& cu)
+{
+  auto platform = k;
+  if (platform) {
+    for (auto device : platform->get_device_range()) {
+      std::string currDeviceName = device->get_unique_name();
+      if (currDeviceName.compare(deviceName) == 0)
+        return device::isAPCtrlChain(device, cu);
+    }
+  }
+  return false;
+}
+
 ////////////////////////////////////////////////////////////////
 // Device
 ////////////////////////////////////////////////////////////////
@@ -532,6 +547,21 @@ getMaxWrite(key k)
   return device->get_xrt_device()->getDeviceMaxWrite().get();
 }
 
+void configureDataflow(key k, xclPerfMonType type)
+{
+  unsigned num_slots = getProfileNumSlots(k, type);
+  auto ip_config = std::make_unique <unsigned []>(num_slots);
+  for (unsigned i=0; i < num_slots; i++) {
+    std::string slot;
+    getProfileSlotName(k, type, i, slot);
+    ip_config[i] = isAPCtrlChain(k, slot) ? 1 : 0;
+  }
+
+  auto device = k;
+  auto xdevice = device->get_xrt_device();
+  xdevice->configureDataflow(type, ip_config.get());
+}
+
 cl_int 
 startCounters(key k, xclPerfMonType type)
 {
@@ -549,6 +579,9 @@ startCounters(key k, xclPerfMonType type)
   xdevice->startCounters(type);
   data->mSampleIntervalMsec =
     OCLProfiler::Instance()->getProfileManager()->getSampleIntervalMsec();
+
+  // Depends on Debug IP Layout data loaded in hal
+  configureDataflow(k, XCL_PERF_MON_ACCEL);
   return CL_SUCCESS;
 }
 
@@ -642,8 +675,15 @@ logCounters(key k, xclPerfMonType type, bool firstReadAfterProgram, bool forceRe
     // Create unique name for device since currently all devices are called fpga0
     std::string device_name = device->get_unique_name();
     std::string binary_name = device->get_xclbin().project_name();
+    auto program = device->get_program();
+    auto profiler = OCLProfiler::Instance();
+    uint32_t program_id = 0;
+    // kernel logger logs data in this format
+    if (program && profiler && profiler->getPlugin()->getFlowMode() == xdp::RTUtil::DEVICE) {
+      program_id = program->get_uid();
+    }
 
-    OCLProfiler::Instance()->getProfileManager()->logDeviceCounters(device_name, binary_name, type, data->mCounterResults,
+    OCLProfiler::Instance()->getProfileManager()->logDeviceCounters(device_name, binary_name, program_id, type, data->mCounterResults,
                                                                          timeNsec, firstReadAfterProgram);
 
     //update the last time sample
@@ -661,6 +701,46 @@ debugReadIPStatus(key k, xclDebugReadType type, void* aDebugResults)
   //read the device profile
   xdevice->debugReadIPStatus(type, aDebugResults);
   return CL_SUCCESS;
+}
+
+template <typename SectionType>
+static SectionType*
+getAxlfSection(const axlf* top, axlf_section_kind kind)
+{
+  if (auto header = xclbin::get_axlf_section(top, kind)) {
+    auto begin = reinterpret_cast<const char*>(top) + header->m_sectionOffset ;
+    return reinterpret_cast<SectionType*>(begin);
+  }
+  return nullptr;
+}
+
+bool
+isAPCtrlChain(key k, const std::string& cu)
+{
+  auto device = k;
+  if (!device)
+    return false;
+  size_t base_addr = 0;
+  for (auto& xcu : device->get_cus()) {
+    if (xcu->get_name().compare(cu) == 0)
+      base_addr = xcu->get_base_addr();
+  }
+  auto xclbin = device->get_xclbin();
+  auto binary = xclbin.binary();
+  auto binary_data = binary.binary_data();
+  auto header = reinterpret_cast<const xclBin *>(binary_data.first);
+  auto ip_layout = getAxlfSection<const ::ip_layout>(header, axlf_section_kind::IP_LAYOUT);
+  if (!ip_layout || !base_addr)
+    return false;
+  for (int32_t count=0; count <ip_layout->m_count; ++count) {
+    const auto& ip_data = ip_layout->m_ip_data[count];
+    auto current = ip_data.m_base_address;
+    if (current != base_addr || ip_data.m_type != IP_TYPE::IP_KERNEL)
+      continue;
+    if ((ip_data.properties >> IP_CONTROL_SHIFT) & AP_CTRL_CHAIN)
+      return true;
+  }
+  return false;
 }
 
 data*

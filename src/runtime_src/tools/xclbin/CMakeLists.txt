@@ -75,6 +75,13 @@ file(GLOB XCLBINUTIL_FILES
   "SectionKeyValueMetadata.cxx"
   "SectionUserMetadata.cxx"
   "SectionPDI.cxx"
+  "SectionBitstreamPartialPDI.cxx"
+  "SectionDTC.cxx"
+  "SectionEmulationData.cxx"
+  "DTC.cxx"
+  "DTCStringsBlock.cxx"
+  "FDTNode.cxx"
+  "FDTProperty.cxx"
 )
 set(XCLBINUTIL_FILES_SRCS ${XCLBINUTIL_FILES})
 

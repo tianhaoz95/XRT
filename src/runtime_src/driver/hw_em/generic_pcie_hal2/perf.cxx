@@ -93,6 +93,12 @@ namespace xclhwemhal2 {
     return 0;
   }
 
+  // Implement this when hw em models support dataflow
+  void HwEmShim::xclPerfMonConfigureDataflow(xclPerfMonType type, unsigned *ip_config)
+  {
+    return;
+  }
+
   size_t HwEmShim::xclPerfMonStartCounters()
   {
     //TODO::Still to decide whether to start Performance Monitor or not
@@ -122,9 +128,12 @@ namespace xclhwemhal2 {
 
  uint32_t HwEmShim::getPerfMonProperties(xclPerfMonType type, uint32_t slotnum)
  {
-   if (type == XCL_PERF_MON_STR && slotnum < XSSPM_MAX_NUMBER_SLOTS) {
-     return  static_cast <uint32_t> (mStreamMonProperties[slotnum]);
-   }
+   if (type == XCL_PERF_MON_MEMORY && slotnum < XSPM_MAX_NUMBER_SLOTS)
+     return static_cast <uint32_t> (mPerfmonProperties[slotnum]);
+   if (type == XCL_PERF_MON_ACCEL && slotnum < XSAM_MAX_NUMBER_SLOTS)
+     return static_cast <uint32_t> (mAccelmonProperties[slotnum]);
+   if (type == XCL_PERF_MON_STR && slotnum < XSSPM_MAX_NUMBER_SLOTS)
+     return static_cast <uint32_t> (mStreamMonProperties[slotnum]);
    return 0;
  }
 
@@ -235,10 +244,14 @@ namespace xclhwemhal2 {
           counterResults.CuExecCycles[counter] = total_wr_latency;
           counterResults.CuMinExecCycles[counter] = rd_trans_count;
           counterResults.CuMaxExecCycles[counter] = total_rd_latency;
-          //counterResults.CuStallIntCycles[counter] = total_int_stalls;
-          //counterResults.CuStallStrCycles[counter] = total_str_stalls;
-          //counterResults.CuStallExtCycles[counter] = total_ext_stalls;
+          // Use defaults until dataflow is supported
+          counterResults.CuBusyCycles[counter] = counterResults.CuExecCycles[counter];
+          counterResults.CuMaxParallelIter[counter] = 1;
         } else if (iptype == 3) {
+          // AXIS without TLAST is assumed to be one long transfer
+          if (str_num_tranx == 0 && str_data_bytes > 0) {
+            str_num_tranx = 1;
+          }
           counterResults.StrNumTranx[counter] = str_num_tranx;
           counterResults.StrDataBytes[counter] = str_data_bytes;
           counterResults.StrBusyCycles[counter] = str_busy_cycles;
@@ -324,10 +337,7 @@ namespace xclhwemhal2 {
       iptype = 2;
     } else if (type == XCL_PERF_MON_STR) {
       iptype = 3;
-    } else {
-      std::cout << "Unknown IP type" << std::endl;
-      return 0;
-    }
+    } 
 
     uint32_t counter = 0;
     uint32_t numSlots = getPerfMonNumberSlots(type);
@@ -450,14 +460,8 @@ namespace xclhwemhal2 {
             xclTraceResults result;
             memset(&result, 0, sizeof(xclTraceResults));
             // result.TraceID = accel ? counter + 64 : counter * 2;
-            if (iptype == 1) {
-              result.TraceID = counter * 2;
-            } else if (iptype == 2) {
-              result.TraceID = counter + 64;
-            } else if (iptype == 3) {
+            if (iptype == 3) {
               result.TraceID = counter + 576;
-            } else {
-              return 0;
             }
             result.Timestamp = event.timestamp();
             result.Overflow = (event.timestamp() >> 17) & 0x1;

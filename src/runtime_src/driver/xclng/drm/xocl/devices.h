@@ -43,18 +43,31 @@ enum {
         XOCL_DSAFLAG_SET_DSA_VER =              0x08,
         XOCL_DSAFLAG_SET_XPR =                  0x10,
         XOCL_DSAFLAG_MFG =                      0x20,
+	XOCL_DSAFLAG_FIXED_INTR =		0x40,
+        XOCL_DSAFLAG_NO_KDMA =              	0x80,
+	XOCL_DSAFLAG_CUDMA_OFF =		0x100,
 };
 
 #define	FLASH_TYPE_SPI	"spi"
 #define	FLASH_TYPE_QSPIPS	"qspi_ps"
 
+enum {
+	XOCL_SUBDEV_LEVEL_STATIC,
+	XOCL_SUBDEV_LEVEL_BLD,
+	XOCL_SUBDEV_LEVEL_PRP,
+	XOCL_SUBDEV_LEVEL_URP,
+};
 struct xocl_subdev_info {
         uint32_t		id;
-        char			*name;
+        const char		*name;
         struct resource		*res;
         int			num_res;
 	void			*priv_data;
 	int			data_len;
+	bool			multi_inst;
+	int			level;
+	int			bar_idx;
+	int			pf;
 };
 
 struct xocl_board_private {
@@ -116,12 +129,12 @@ enum {
 
 #define	XOCL_FEATURE_ROM_USER	"rom" USER_SUFFIX
 #define XOCL_FEATURE_ROM	"rom" SUBDEV_SUFFIX
-#define XOCL_MM_XDMA		"mm_dma.v5" SUBDEV_SUFFIX
-#define XOCL_MM_QDMA		"mm_dma.v6" SUBDEV_SUFFIX
-#define	XOCL_STR_QDMA		"str_dma" SUBDEV_SUFFIX
+#define XOCL_XDMA		"dma.xdma" SUBDEV_SUFFIX
+#define XOCL_QDMA		"dma.qdma" SUBDEV_SUFFIX
 #define XOCL_MB_SCHEDULER	"mb_scheduler" SUBDEV_SUFFIX
 #define XOCL_XVC_PUB		"xvc_pub" SUBDEV_SUFFIX
 #define XOCL_XVC_PRI		"xvc_pri" SUBDEV_SUFFIX
+#define XOCL_NIFD_PRI		"nifd_pri" SUBDEV_SUFFIX
 #define XOCL_SYSMON		"sysmon" SUBDEV_SUFFIX
 #define XOCL_FIREWALL		"firewall" SUBDEV_SUFFIX
 #define	XOCL_MB			"microblaze" SUBDEV_SUFFIX
@@ -131,12 +144,15 @@ enum {
 #define	XOCL_MIG		"mig" SUBDEV_SUFFIX
 #define	XOCL_XMC		"xmc" SUBDEV_SUFFIX
 #define	XOCL_DNA		"dna" SUBDEV_SUFFIX
+#define	XOCL_FMGR		"fmgr" SUBDEV_SUFFIX
+
 enum subdev_id {
 	XOCL_SUBDEV_FEATURE_ROM,
-	XOCL_SUBDEV_MM_DMA,
+	XOCL_SUBDEV_DMA,
 	XOCL_SUBDEV_MB_SCHEDULER,
 	XOCL_SUBDEV_XVC_PUB,
 	XOCL_SUBDEV_XVC_PRI,
+	XOCL_SUBDEV_NIFD_PRI,
 	XOCL_SUBDEV_SYSMON,
 	XOCL_SUBDEV_AF,
 	XOCL_SUBDEV_MIG,
@@ -144,11 +160,15 @@ enum subdev_id {
 	XOCL_SUBDEV_XIIC,
 	XOCL_SUBDEV_MAILBOX,
 	XOCL_SUBDEV_ICAP,
-	XOCL_SUBDEV_STR_DMA,
-	XOCL_SUBDEV_XMC,
 	XOCL_SUBDEV_DNA,
+	XOCL_SUBDEV_FMGR,
+	XOCL_SUBDEV_MIG_HBM,
 	XOCL_SUBDEV_NUM
 };
+
+#define XOCL_SUBDEV_MAX_RES		32
+#define XOCL_SUBDEV_RES_NAME_LEN	64
+#define XOCL_SUBDEV_MAX_INST		64
 
 #define	XOCL_RES_FEATURE_ROM				\
 		((struct resource []) {			\
@@ -201,8 +221,29 @@ enum subdev_id {
 		XOCL_MIG,				\
 		XOCL_RES_MIG,				\
 		ARRAY_SIZE(XOCL_RES_MIG),		\
+		.level = XOCL_SUBDEV_LEVEL_URP,		\
+		.multi_inst = true,			\
 	}
 
+
+#define	XOCL_RES_MIG_HBM				\
+		((struct resource []) {			\
+			{				\
+			.start	= 0x5800,		\
+			.end 	= 0x58FF,		\
+			.flags  = IORESOURCE_MEM,	\
+			}				\
+		})
+
+#define	XOCL_DEVINFO_MIG_HBM				\
+	{						\
+		XOCL_SUBDEV_MIG_HBM,			\
+		XOCL_MIG,				\
+		XOCL_RES_MIG_HBM,			\
+		ARRAY_SIZE(XOCL_RES_MIG_HBM),		\
+		.level = XOCL_SUBDEV_LEVEL_URP,		\
+		.multi_inst = true,			\
+	}
 
 #define	XOCL_RES_AF					\
 		((struct resource []) {			\
@@ -307,6 +348,23 @@ enum subdev_id {
 		ARRAY_SIZE(XOCL_RES_XVC_PRI),		\
 	}
 
+#define	XOCL_RES_NIFD_PRI				\
+	((struct resource []) {				\
+		{					\
+			.start	= 0x28000,		\
+			.end	= 0x2cfff,		\
+			.flags	= IORESOURCE_MEM,	\
+		},					\
+	})
+
+#define	XOCL_DEVINFO_NIFD_PRI				\
+	{						\
+		XOCL_SUBDEV_NIFD_PRI,			\
+		XOCL_NIFD_PRI,				\
+		XOCL_RES_NIFD_PRI,			\
+		ARRAY_SIZE(XOCL_RES_NIFD_PRI),		\
+	}
+
 #define	XOCL_RES_XIIC					\
 	((struct resource []) {				\
 		{					\
@@ -341,6 +399,7 @@ enum subdev_id {
 		XOCL_DNA,				\
 		XOCL_RES_DNA,				\
 		ARRAY_SIZE(XOCL_RES_DNA),		\
+		.level = XOCL_SUBDEV_LEVEL_URP,		\
 	}
 
 #define	XOCL_MAILBOX_OFFSET_MGMT	0x210000
@@ -366,6 +425,28 @@ enum subdev_id {
 		ARRAY_SIZE(XOCL_RES_MAILBOX_MGMT),	\
 	}
 
+#define	XOCL_RES_MAILBOX_MGMT_QDMA				\
+	((struct resource []) {				\
+		{					\
+			.start	= XOCL_MAILBOX_OFFSET_MGMT, \
+			.end	= 0x21002F,		\
+			.flags  = IORESOURCE_MEM,	\
+		},					\
+		{					\
+			.start	= 1,			\
+			.end	= 1,			\
+			.flags  = IORESOURCE_IRQ,	\
+		},					\
+	})
+
+#define	XOCL_DEVINFO_MAILBOX_MGMT_QDMA			\
+	{						\
+		XOCL_SUBDEV_MAILBOX,			\
+		XOCL_MAILBOX,				\
+		XOCL_RES_MAILBOX_MGMT_QDMA,		\
+		ARRAY_SIZE(XOCL_RES_MAILBOX_MGMT_QDMA),	\
+	}
+
 #define	XOCL_MAILBOX_OFFSET_USER	0x200000
 #define	XOCL_RES_MAILBOX_USER				\
 	((struct resource []) {				\
@@ -387,6 +468,28 @@ enum subdev_id {
 		XOCL_MAILBOX,				\
 		XOCL_RES_MAILBOX_USER,			\
 		ARRAY_SIZE(XOCL_RES_MAILBOX_USER),	\
+	}
+
+#define	XOCL_RES_MAILBOX_USER_QDMA			\
+	((struct resource []) {				\
+		{					\
+			.start	= XOCL_MAILBOX_OFFSET_USER, \
+			.end	= 0x20002F,		\
+			.flags  = IORESOURCE_MEM,	\
+		},					\
+		{					\
+			.start	= 1,			\
+			.end	= 1,			\
+			.flags  = IORESOURCE_IRQ,	\
+		},					\
+	})
+
+#define	XOCL_DEVINFO_MAILBOX_USER_QDMA			\
+	{						\
+		XOCL_SUBDEV_MAILBOX,			\
+		XOCL_MAILBOX,				\
+		XOCL_RES_MAILBOX_USER_QDMA,		\
+		ARRAY_SIZE(XOCL_RES_MAILBOX_USER_QDMA),	\
 	}
 
 #define	XOCL_RES_ICAP_MGMT				\
@@ -437,6 +540,66 @@ enum subdev_id {
 		ARRAY_SIZE(XOCL_RES_ICAP_MGMT),		\
 	}
 
+#define	XOCL_RES_ICAP_MGMT_U280				\
+	((struct resource []) {				\
+		/* HWICAP registers */			\
+		{					\
+			.start	= 0x020000,		\
+			.end	= 0x020119,		\
+			.flags  = IORESOURCE_MEM,	\
+		},					\
+		/* GENERAL_STATUS_BASE */		\
+		{					\
+			.start	= 0x032000,		\
+			.end	= 0x032003,		\
+			.flags  = IORESOURCE_MEM,	\
+		},					\
+		/* AXI Gate registers */		\
+		{					\
+			.start	= 0x030000,		\
+			.end	= 0x03000b,		\
+			.flags  = IORESOURCE_MEM,	\
+		},					\
+		/* OCL_CLKWIZ0_BASE */			\
+		{					\
+			.start	= 0x050000,		\
+			.end	= 0x050fff,		\
+			.flags  = IORESOURCE_MEM,	\
+		},					\
+		/* OCL_CLKWIZ1_BASE */			\
+		{					\
+			.start	= 0x051000,		\
+			.end	= 0x051fff,		\
+			.flags  = IORESOURCE_MEM,	\
+		},					\
+		/* OCL_CLKFREQ_BASE */			\
+		{					\
+			.start	= 0x052000,		\
+			.end	= 0x052fff,		\
+			.flags  = IORESOURCE_MEM,	\
+		},					\
+		/* OCL_CLKWIZ2_BASE */			\
+		{					\
+			.start	= 0x053000,		\
+			.end	= 0x053fff,		\
+			.flags  = IORESOURCE_MEM,	\
+		},					\
+		/* OCL_CLKFREQ_BASE */			\
+		{					\
+			.start	= 0x055000,		\
+			.end	= 0x055fff,		\
+			.flags  = IORESOURCE_MEM,	\
+		},					\
+	})
+
+#define	XOCL_DEVINFO_ICAP_MGMT_U280			\
+	{						\
+		XOCL_SUBDEV_ICAP,			\
+		XOCL_ICAP,				\
+		XOCL_RES_ICAP_MGMT_U280,		\
+		ARRAY_SIZE(XOCL_RES_ICAP_MGMT_U280),	\
+	}
+
 #define	XOCL_DEVINFO_ICAP_USER				\
 	{						\
 		XOCL_SUBDEV_ICAP,			\
@@ -472,14 +635,28 @@ enum subdev_id {
 			.end 	= 0x19FFFF,		\
 			.flags  = IORESOURCE_MEM,	\
 			},				\
+			/* RUNTIME CLOCK SCALING FEATURE BASE */	\
+			{				\
+			.start	= 0x053000,		\
+			.end	= 0x053fff,		\
+			.flags	= IORESOURCE_MEM,	\
+			},				\
 		})
 
 #define	XOCL_DEVINFO_XMC					\
 	{						\
-		XOCL_SUBDEV_XMC,				\
+		XOCL_SUBDEV_MB,				\
 		XOCL_XMC,				\
 		XOCL_RES_XMC,				\
 		ARRAY_SIZE(XOCL_RES_XMC),		\
+	}
+
+#define	XOCL_DEVINFO_XMC_USER			\
+	{						\
+		XOCL_SUBDEV_MB,				\
+		XOCL_XMC,				\
+		NULL,					\
+		0,					\
 	}
 
 #define	XOCL_RES_MB					\
@@ -516,24 +693,16 @@ enum subdev_id {
 
 #define	XOCL_DEVINFO_QDMA				\
 	{						\
-		XOCL_SUBDEV_MM_DMA,			\
-		XOCL_MM_QDMA,				\
-		NULL,					\
-		0,					\
-	}
-
-#define	XOCL_DEVINFO_QDMA_STREAM			\
-	{						\
-		XOCL_SUBDEV_STR_DMA,			\
-		XOCL_STR_QDMA,				\
+		XOCL_SUBDEV_DMA,			\
+		XOCL_QDMA,				\
 		NULL,					\
 		0,					\
 	}
 
 #define	XOCL_DEVINFO_XDMA				\
 	{						\
-		XOCL_SUBDEV_MM_DMA,			\
-		XOCL_MM_XDMA,				\
+		XOCL_SUBDEV_DMA,			\
+		XOCL_XDMA,				\
 		NULL,					\
 		0,					\
 	}
@@ -541,7 +710,7 @@ enum subdev_id {
 #define XOCL_RES_SCHEDULER				\
 		((struct resource []) {			\
 		/*
- 		 *map entire bar for now because scheduler directly
+ 		 * map entire bar for now because scheduler directly
 		 * programs CUs
 		 */					\
 			{				\
@@ -558,32 +727,73 @@ enum subdev_id {
 		XOCL_MB_SCHEDULER,			\
 		XOCL_RES_SCHEDULER,			\
 		ARRAY_SIZE(XOCL_RES_SCHEDULER),		\
+		&(char []){1},				\
+		1					\
 	}
+
+#define XOCL_RES_SCHEDULER_QDMA				\
+		((struct resource []) {			\
+			{				\
+			.start	= 2,			\
+			.end	= 5,			\
+			.flags	= IORESOURCE_IRQ,	\
+			}				\
+		})
+
+
+#define	XOCL_DEVINFO_SCHEDULER_QDMA				\
+	{						\
+		XOCL_SUBDEV_MB_SCHEDULER,		\
+		XOCL_MB_SCHEDULER,			\
+		XOCL_RES_SCHEDULER_QDMA,			\
+		ARRAY_SIZE(XOCL_RES_SCHEDULER_QDMA),		\
+		&(char []){1},				\
+		1					\
+	}
+
+#define	XOCL_DEVINFO_SCHEDULER_51				\
+	{						\
+		XOCL_SUBDEV_MB_SCHEDULER,		\
+		XOCL_MB_SCHEDULER,			\
+		XOCL_RES_SCHEDULER,			\
+		ARRAY_SIZE(XOCL_RES_SCHEDULER),		\
+		&(char []){0},				\
+		1					\
+	}
+
+#define	XOCL_DEVINFO_FMGR				\
+	{						\
+		XOCL_SUBDEV_FMGR,			\
+		XOCL_FMGR,				\
+		NULL,					\
+		0,					\
+	}
+
 
 /* user pf defines */
 #define	USER_RES_QDMA							\
 		((struct xocl_subdev_info []) {				\
 			XOCL_DEVINFO_FEATURE_ROM,			\
 			XOCL_DEVINFO_QDMA,				\
-			XOCL_DEVINFO_QDMA_STREAM,			\
-			XOCL_DEVINFO_SCHEDULER,				\
+			XOCL_DEVINFO_SCHEDULER_QDMA, 			\
 			XOCL_DEVINFO_XVC_PUB,				\
+		 	XOCL_DEVINFO_MAILBOX_USER_QDMA,			\
 			XOCL_DEVINFO_ICAP_USER,				\
+			XOCL_DEVINFO_XMC_USER,				\
 		})
 
 #define	XOCL_BOARD_USER_QDMA						\
 	(struct xocl_board_private){					\
-		.flags		= XOCL_DSAFLAG_MB_SCHE_OFF,		\
+		.flags		= 0,					\
 		.subdev_info	= USER_RES_QDMA,			\
 		.subdev_num = ARRAY_SIZE(USER_RES_QDMA),		\
-		.flash_type = FLASH_TYPE_SPI				\
 	}
 
 #define	USER_RES_XDMA_DSA50						\
 		((struct xocl_subdev_info []) {				\
 			XOCL_DEVINFO_FEATURE_ROM,			\
 			XOCL_DEVINFO_XDMA,				\
-			XOCL_DEVINFO_SCHEDULER,				\
+			XOCL_DEVINFO_SCHEDULER_51,			\
 			XOCL_DEVINFO_ICAP_USER,				\
 		})
 
@@ -591,18 +801,19 @@ enum subdev_id {
 		((struct xocl_subdev_info []) {				\
 			XOCL_DEVINFO_FEATURE_ROM,			\
 			XOCL_DEVINFO_XDMA,				\
-			XOCL_DEVINFO_SCHEDULER,				\
+			XOCL_DEVINFO_SCHEDULER_51,			\
 			XOCL_DEVINFO_MAILBOX_USER,			\
 			XOCL_DEVINFO_ICAP_USER,				\
+			XOCL_DEVINFO_XMC_USER,				\
 		})
 
-#define USER_RES_AWS                            \
-       ((struct xocl_subdev_info []) {             \
-           XOCL_DEVINFO_FEATURE_ROM,           \
-           XOCL_DEVINFO_XDMA,              \
-           XOCL_DEVINFO_SCHEDULER,             \
-           XOCL_DEVINFO_ICAP_USER,             \
-       })
+#define USER_RES_AWS							\
+		((struct xocl_subdev_info []) {				\
+			XOCL_DEVINFO_FEATURE_ROM,			\
+			XOCL_DEVINFO_XDMA,				\
+			XOCL_DEVINFO_SCHEDULER_51,			\
+			XOCL_DEVINFO_ICAP_USER,				\
+		})
 
 #define	USER_RES_DSA52							\
 		((struct xocl_subdev_info []) {				\
@@ -612,6 +823,7 @@ enum subdev_id {
 			XOCL_DEVINFO_MAILBOX_USER,			\
 			XOCL_DEVINFO_XVC_PUB,				\
 			XOCL_DEVINFO_ICAP_USER,				\
+			XOCL_DEVINFO_XMC_USER,				\
 		})
 
 #define	XOCL_BOARD_USER_XDMA_DSA50					\
@@ -649,6 +861,13 @@ enum subdev_id {
 		.subdev_num = ARRAY_SIZE(USER_RES_DSA52),		\
 	}
 
+#define	XOCL_BOARD_USER_DSA_U250_NO_KDMA				\
+	(struct xocl_board_private){					\
+		.flags		= XOCL_DSAFLAG_NO_KDMA,			\
+		.subdev_info	= USER_RES_DSA52,			\
+		.subdev_num = ARRAY_SIZE(USER_RES_DSA52),		\
+	}
+
 /* mgmt pf defines */
 #define	MGMT_RES_DEFAULT						\
 		((struct xocl_subdev_info []) {				\
@@ -660,6 +879,7 @@ enum subdev_id {
 			XOCL_DEVINFO_XIIC,				\
 			XOCL_DEVINFO_MAILBOX_MGMT,			\
 			XOCL_DEVINFO_ICAP_MGMT,				\
+			XOCL_DEVINFO_FMGR,		        	\
 		})
 
 #define	MGMT_RES_DSA50							\
@@ -671,6 +891,7 @@ enum subdev_id {
 			XOCL_DEVINFO_XVC_PUB,				\
 			XOCL_DEVINFO_XIIC,				\
 			XOCL_DEVINFO_ICAP_MGMT,				\
+			XOCL_DEVINFO_FMGR,      			\
 		})
 
 #define	XOCL_BOARD_MGMT_DEFAULT						\
@@ -698,6 +919,7 @@ enum subdev_id {
 			XOCL_DEVINFO_XVC_PUB,				\
 			XOCL_DEVINFO_MAILBOX_MGMT,			\
 			XOCL_DEVINFO_ICAP_MGMT,				\
+			XOCL_DEVINFO_FMGR,      			\
 		})
 
 #define	MGMT_RES_6A8F_DSA50						\
@@ -708,6 +930,7 @@ enum subdev_id {
 			XOCL_DEVINFO_MB,				\
 			XOCL_DEVINFO_XVC_PUB,				\
 			XOCL_DEVINFO_ICAP_MGMT,				\
+			XOCL_DEVINFO_FMGR,      			\
 		})
 
 #define	MGMT_RES_XBB_DSA51						\
@@ -719,6 +942,7 @@ enum subdev_id {
 			XOCL_DEVINFO_XVC_PUB,				\
 			XOCL_DEVINFO_MAILBOX_MGMT,			\
 			XOCL_DEVINFO_ICAP_MGMT,				\
+			XOCL_DEVINFO_FMGR,      			\
 		})
 
 #define	XOCL_BOARD_MGMT_6A8F						\
@@ -754,7 +978,9 @@ enum subdev_id {
 			XOCL_DEVINFO_AF,				\
 			XOCL_DEVINFO_MB,				\
 			XOCL_DEVINFO_XVC_PRI,				\
+			XOCL_DEVINFO_MAILBOX_MGMT_QDMA,			\
 			XOCL_DEVINFO_ICAP_MGMT,				\
+			XOCL_DEVINFO_FMGR,      			\
 		})
 
 
@@ -763,6 +989,28 @@ enum subdev_id {
 		.flags		= 0,					\
 		.subdev_info	= MGMT_RES_QDMA,			\
 		.subdev_num = ARRAY_SIZE(MGMT_RES_QDMA),		\
+		.flash_type = FLASH_TYPE_SPI				\
+	}
+
+#define MGMT_RES_XBB_QDMA                                               \
+	((struct xocl_subdev_info []) {                         \
+		XOCL_DEVINFO_FEATURE_ROM,                       \
+		XOCL_DEVINFO_SYSMON,                            \
+		XOCL_DEVINFO_AF_DSA52,                          \
+		XOCL_DEVINFO_XMC,                               \
+		XOCL_DEVINFO_XVC_PRI,                           \
+		XOCL_DEVINFO_NIFD_PRI,				\
+		XOCL_DEVINFO_MAILBOX_MGMT_QDMA,			\
+		XOCL_DEVINFO_ICAP_MGMT,                         \
+		XOCL_DEVINFO_FMGR,      			\
+	})
+
+#define XOCL_BOARD_MGMT_XBB_QDMA                                        \
+	(struct xocl_board_private){                                    \
+		.flags          = XOCL_DSAFLAG_FIXED_INTR,		\
+		.subdev_info    = MGMT_RES_XBB_QDMA,                    \
+		.subdev_num = ARRAY_SIZE(MGMT_RES_XBB_QDMA),            \
+		.flash_type = FLASH_TYPE_SPI				\
 	}
 
 #define	XOCL_BOARD_MGMT_6B0F		XOCL_BOARD_MGMT_6A8F
@@ -776,6 +1024,7 @@ enum subdev_id {
 			XOCL_DEVINFO_XVC_PRI,				\
 			XOCL_DEVINFO_MAILBOX_MGMT,			\
 			XOCL_DEVINFO_ICAP_MGMT,				\
+			XOCL_DEVINFO_FMGR,      			\
 		})
 
 #define	XOCL_BOARD_MGMT_6A8F_DSA52					\
@@ -792,8 +1041,10 @@ enum subdev_id {
 			XOCL_DEVINFO_AF_DSA52,				\
 			XOCL_DEVINFO_XMC,				\
 			XOCL_DEVINFO_XVC_PRI,				\
+			XOCL_DEVINFO_NIFD_PRI,				\
 			XOCL_DEVINFO_MAILBOX_MGMT,			\
 			XOCL_DEVINFO_ICAP_MGMT,				\
+			XOCL_DEVINFO_FMGR,      			\
 		})
 
 #define	XOCL_BOARD_MGMT_XBB_DSA52					\
@@ -802,6 +1053,47 @@ enum subdev_id {
 		.subdev_info	= MGMT_RES_XBB_DSA52,			\
 		.subdev_num = ARRAY_SIZE(MGMT_RES_XBB_DSA52),		\
 		.flash_type = FLASH_TYPE_SPI,				\
+	}
+
+
+#define	MGMT_RES_XBB_DSA52_U280						\
+		((struct xocl_subdev_info []) {				\
+			XOCL_DEVINFO_FEATURE_ROM,			\
+			XOCL_DEVINFO_SYSMON,				\
+			XOCL_DEVINFO_AF_DSA52,				\
+			XOCL_DEVINFO_XMC,				\
+			XOCL_DEVINFO_XVC_PRI,				\
+			XOCL_DEVINFO_MAILBOX_MGMT,			\
+			XOCL_DEVINFO_ICAP_MGMT_U280,			\
+			XOCL_DEVINFO_FMGR,      			\
+		})
+
+#define	XOCL_BOARD_MGMT_XBB_DSA52_U280					\
+	(struct xocl_board_private){					\
+		.flags		= 0,					\
+		.subdev_info	= MGMT_RES_XBB_DSA52_U280,		\
+		.subdev_num = ARRAY_SIZE(MGMT_RES_XBB_DSA52_U280),	\
+		.flash_type = FLASH_TYPE_SPI,				\
+	}
+
+#define MGMT_RES_XBB_QDMA_U280                                               \
+	((struct xocl_subdev_info []) {                         \
+		XOCL_DEVINFO_FEATURE_ROM,                       \
+		XOCL_DEVINFO_SYSMON,                            \
+		XOCL_DEVINFO_AF_DSA52,                          \
+		XOCL_DEVINFO_XMC,                               \
+		XOCL_DEVINFO_XVC_PRI,                           \
+		XOCL_DEVINFO_MAILBOX_MGMT_QDMA,			\
+		XOCL_DEVINFO_ICAP_MGMT_U280,                    \
+		XOCL_DEVINFO_FMGR,      			\
+	})
+
+#define XOCL_BOARD_MGMT_XBB_QDMA_U280                                   \
+	(struct xocl_board_private){                                    \
+		.flags          = XOCL_DSAFLAG_FIXED_INTR,		\
+		.subdev_info    = MGMT_RES_XBB_QDMA_U280,               \
+		.subdev_num = ARRAY_SIZE(MGMT_RES_XBB_QDMA_U280),       \
+		.flash_type = FLASH_TYPE_SPI				\
 	}
 
 #define	MGMT_RES_6E8F_DSA52						\
@@ -814,6 +1106,7 @@ enum subdev_id {
 			XOCL_DEVINFO_XIIC,				\
 			XOCL_DEVINFO_MAILBOX_MGMT,			\
 			XOCL_DEVINFO_ICAP_MGMT,				\
+			XOCL_DEVINFO_FMGR,      			\
 		})
 
 #define	XOCL_BOARD_MGMT_6E8F_DSA52					\
@@ -830,6 +1123,7 @@ enum subdev_id {
 			XOCL_DEVINFO_XVC_PUB,				\
 			XOCL_DEVINFO_MAILBOX_MGMT,			\
 			XOCL_DEVINFO_ICAP_MGMT,				\
+			XOCL_DEVINFO_FMGR,      			\
 		})
 
 #define	XOCL_BOARD_MGMT_MPSOC						\
@@ -875,6 +1169,10 @@ enum subdev_id {
 	{ XOCL_PCI_DEVID(0x10EE, 0x6A8F, 0x4351, MGMT_6A8F) },		\
 	{ XOCL_PCI_DEVID(0x10EE, 0x6A8F, 0x4352, MGMT_6A8F_DSA52) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x6A9F, 0x4360, MGMT_QDMA) },		\
+	{ XOCL_PCI_DEVID(0x10EE, 0x5010, PCI_ANY_ID, MGMT_XBB_QDMA) },	\
+	{ XOCL_PCI_DEVID(0x10EE, 0x5014, PCI_ANY_ID, MGMT_XBB_QDMA) },	\
+	{ XOCL_PCI_DEVID(0x10EE, 0x5018, PCI_ANY_ID, MGMT_XBB_QDMA_U280) },\
+	{ XOCL_PCI_DEVID(0x10EE, 0x501C, PCI_ANY_ID, MGMT_XBB_QDMA_U280) },\
 	{ XOCL_PCI_DEVID(0x10EE, 0x6A9F, PCI_ANY_ID, MGMT_DEFAULT) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x6E4F, PCI_ANY_ID, MGMT_DEFAULT) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x6B0F, PCI_ANY_ID, MGMT_6B0F) },	\
@@ -887,13 +1185,16 @@ enum subdev_id {
 	{ XOCL_PCI_DEVID(0x10EE, 0x6A8F, 0x4353, MGMT_6A8F_DSA52) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5000, PCI_ANY_ID, MGMT_XBB_DSA52) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5004, PCI_ANY_ID, MGMT_XBB_DSA52) },	\
-	{ XOCL_PCI_DEVID(0x10EE, 0x5008, PCI_ANY_ID, MGMT_XBB_DSA52) },	\
+	{ XOCL_PCI_DEVID(0x10EE, 0x5008, PCI_ANY_ID, MGMT_XBB_DSA52_U280) },\
+	{ XOCL_PCI_DEVID(0x10EE, 0x500C, PCI_ANY_ID, MGMT_XBB_DSA52_U280) },\
 	{ XOCL_PCI_DEVID(0x13FE, 0x006C, PCI_ANY_ID, MGMT_6A8F) },	\
+	{ XOCL_PCI_DEVID(0x13FE, 0x0078, PCI_ANY_ID, MGMT_XBB_DSA52) },  \
 	{ XOCL_PCI_DEVID(0x10EE, 0xD000, PCI_ANY_ID, XBB_MFG("u200")) },\
 	{ XOCL_PCI_DEVID(0x10EE, 0xD004, PCI_ANY_ID, XBB_MFG("u250")) },\
 	{ XOCL_PCI_DEVID(0x10EE, 0xD008, PCI_ANY_ID, XBB_MFG("u280-es1")) }, \
 	{ XOCL_PCI_DEVID(0x10EE, 0xD00C, PCI_ANY_ID, XBB_MFG("u280")) },\
-	{ XOCL_PCI_DEVID(0x10EE, 0xEB10, PCI_ANY_ID, XBB_MFG("twitch")) }
+	{ XOCL_PCI_DEVID(0x10EE, 0xEB10, PCI_ANY_ID, XBB_MFG("twitch")) }, \
+	{ XOCL_PCI_DEVID(0x13FE, 0x806C, PCI_ANY_ID, XBB_MFG("advantech")) }
 
 #define	XOCL_USER_XDMA_PCI_IDS						\
 	{ XOCL_PCI_DEVID(0x10EE, 0x4A48, PCI_ANY_ID, USER_XDMA) },	\
@@ -923,18 +1224,24 @@ enum subdev_id {
 	{ XOCL_PCI_DEVID(0x10EE, 0x5001, PCI_ANY_ID, USER_DSA52) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5005, PCI_ANY_ID, USER_DSA52) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5009, PCI_ANY_ID, USER_DSA52) },	\
+	{ XOCL_PCI_DEVID(0x10EE, 0x500D, PCI_ANY_ID, USER_DSA52) },	\
 	{ XOCL_PCI_DEVID(0x13FE, 0x0065, PCI_ANY_ID, USER_XDMA) },	\
+	{ XOCL_PCI_DEVID(0x13FE, 0x0077, PCI_ANY_ID, USER_DSA52) },	\
 	{ XOCL_PCI_DEVID(0x1D0F, 0x1042, PCI_ANY_ID, USER_AWS) },	\
 	{ XOCL_PCI_DEVID(0x1D0F, 0xF000, PCI_ANY_ID, USER_AWS) },	\
-	{ XOCL_PCI_DEVID(0x1D0F, 0xF010, PCI_ANY_ID, USER_AWS) }
-
-#define	XOCL_USER_QDMA_PCI_IDS						\
-	{ XOCL_PCI_DEVID(0x10EE, 0x6AA0, 0x4360, USER_QDMA) }
+	{ XOCL_PCI_DEVID(0x1D0F, 0xF010, PCI_ANY_ID, USER_AWS) },	\
+	{ XOCL_PCI_DEVID(0x10EE, 0x6AA0, 0x4360, USER_QDMA) },		\
+	{ XOCL_PCI_DEVID(0x10EE, 0x5011, PCI_ANY_ID, USER_QDMA) },	\
+	{ XOCL_PCI_DEVID(0x10EE, 0x5015, PCI_ANY_ID, USER_QDMA) },	\
+	{ XOCL_PCI_DEVID(0x10EE, 0x5019, PCI_ANY_ID, USER_QDMA) },	\
+	{ XOCL_PCI_DEVID(0x10EE, 0x501D, PCI_ANY_ID, USER_QDMA) }
 
 #define XOCL_DSA_VBNV_MAP						\
 	{ 0x10EE, 0x5001, PCI_ANY_ID, "xilinx_u200_xdma_201820_1",	\
 		&XOCL_BOARD_USER_XDMA },				\
 	{ 0x10EE, 0x5000, PCI_ANY_ID, "xilinx_u200_xdma_201820_1",	\
-		&XOCL_BOARD_MGMT_XBB_DSA51 }
+		&XOCL_BOARD_MGMT_XBB_DSA51 },				\
+	{ 0x10EE, 0x5005, PCI_ANY_ID, "xilinx_u250_xdma_201830_1",	\
+		&XOCL_BOARD_USER_DSA_U250_NO_KDMA }
 
 #endif

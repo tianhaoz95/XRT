@@ -3,9 +3,11 @@
 
 # This script is used to build the XRT Embedded Platform PetaLinux Image
 #
-# petalinux.sh <PATH_TO_VIVADO> <PETALINUX_LOCATION> <PETALINUX_NAME> <XRT_REPO_DIR>
+# petalinux.sh <PATH_TO_VIVADO> <PATH_TO_XSCT> <PETALINUX_LOCATION> <PETALINUX_NAME> <XRT_REPO_DIR>
 #
 # PetaLinux output is put into directory $PWD/$PETALINUX_NAME
+#
+# *** The generated platform will be in $PWD/platform/
 #
 
 APPNAME="XRT EMBEDDED PETALINUX"
@@ -25,9 +27,15 @@ if [ ! -f $PATH_TO_VIVADO ]; then
   exit 1
 fi
 
-PETALINUX_LOCATION=$2
+PATH_TO_XSCT=$2
+if [ ! -f $PATH_TO_XSCT ]; then
+  echo "ERROR: Failed to find xsct (it is missing): ${PATH_TO_XSCT}"
+  exit 1
+fi
 
-PETALINUX_NAME=$3
+PETALINUX_LOCATION=$3
+
+PETALINUX_NAME=$4
 # Allow incremental builds
 #if [ -d $PETALINUX_NAME ]; then
 #  echo "ERROR: PetaLinux project already exists, please remove and rerun:"
@@ -35,7 +43,7 @@ PETALINUX_NAME=$3
 #  exit 1
 #fi
 
-XRT_REPO_DIR=$4
+XRT_REPO_DIR=$5
 
 ORIGINAL_DIR=$PWD
 
@@ -44,18 +52,21 @@ if [ "${BUILD_DSA}" = true ]; then
   # Generate DSA and HDF
   #  * ${XRT_REPO_DIR}/src/platform/zcu102ng/zcu102ng.dsa
   #  * ${XRT_REPO_DIR}/src/platform/zcu102ng/zcu102_vivado/zcu102ng.hdf
-  cd ${XRT_REPO_DIR}/src/platform/zcu102ng/
+  cp -r ${XRT_REPO_DIR}/src/platform/zcu102ng ${ORIGINAL_DIR}/dsa_build
+  cd ${ORIGINAL_DIR}/dsa_build
   echo " * Building Platform (DSA & HDF from: $PWD)"
   echo "   Starting: $PATH_TO_VIVADO"
   ${PATH_TO_VIVADO} -mode batch -notrace -source ./zcu102ng_dsa.tcl
   cd $ORIGINAL_DIR
 fi
-if [ ! -f ${XRT_REPO_DIR}/src/platform/zcu102ng/zcu102ng.dsa ]; then
-  echo "ERROR: Failed to create DSA (it is missing): ${XRT_REPO_DIR}/src/platform/zcu102ng/zcu102ng.dsa"
+
+if [ ! -f ${ORIGINAL_DIR}/dsa_build/zcu102ng.dsa ]; then
+  echo "ERROR: Failed to create DSA (it is missing): ${XRT_REPO_DIR}/dsa_build/zcu102ng.dsa"
   exit 1
 fi
-if [ ! -f ${XRT_REPO_DIR}/src/platform/zcu102ng/zcu102ng_vivado/zcu102ng.hdf ]; then
-  echo "ERROR: Failed to create HDF (it is missing): ${XRT_REPO_DIR}/src/platform/zcu102ng/zcu102ng_vivado/zcu102ng.hdf"
+
+if [ ! -f ${ORIGINAL_DIR}/dsa_build/zcu102ng_vivado/zcu102ng.hdf ]; then
+  echo "ERROR: Failed to create HDF (it is missing): ${XRT_REPO_DIR}/dsa_build/zcu102ng_vivado/zcu102ng.hdf"
   exit 1
 fi
 
@@ -81,8 +92,8 @@ mkdir -p ${PETALINUX_NAME}/build/conf/
 echo " * Configuring PetaLinux Project"
 # Allow users to access shell without login
 echo "CONFIG_YOCTO_ENABLE_DEBUG_TWEAKS=y" >> ${PETALINUX_NAME}/project-spec/configs/config
-echo "petalinux-config -p $PETALINUX_NAME --get-hw-description=${XRT_REPO_DIR}/src/platform/zcu102ng/zcu102ng_vivado/ --oldconfig"
-petalinux-config -p $PETALINUX_NAME --get-hw-description=${XRT_REPO_DIR}/src/platform/zcu102ng/zcu102ng_vivado/ --oldconfig
+echo "petalinux-config -p $PETALINUX_NAME --get-hw-description=${ORIGINAL_DIR}/dsa_build/zcu102ng_vivado/zcu102ng_vivado/ --oldconfig"
+petalinux-config -p $PETALINUX_NAME --get-hw-description=${ORIGINAL_DIR}/dsa_build/zcu102ng_vivado/ --oldconfig
  
 echo " * Change to meta directory: ${PETALINUX_NAME}/project-spec/meta-user/"
 cd ${PETALINUX_NAME}/project-spec/meta-user/
@@ -103,18 +114,29 @@ fi
 cp -r ${XRT_REPO_DIR}/src/platform/mnt-sd recipes-apps/
 
 echo " * Adding XRT, HAL, Driver recipes"
-cp recipes-core/images/petalinux-image.bbappend{,.orig}
-echo 'IMAGE_INSTALL_append = " xrt-dev"' >> recipes-core/images/petalinux-image.bbappend
-echo 'IMAGE_INSTALL_append = " mnt-sd"' >> recipes-core/images/petalinux-image.bbappend
-echo 'IMAGE_INSTALL_append = " xrt"' >> recipes-core/images/petalinux-image.bbappend
-echo 'IMAGE_INSTALL_append = " zocl"' >> recipes-core/images/petalinux-image.bbappend 
-echo 'IMAGE_INSTALL_append = " opencl-headers-dev"' >> recipes-core/images/petalinux-image.bbappend 
+
+# In 2018.3 Petalinux the name of this file changed..
+if [ -f recipes-core/images/petalinux-image.bbappend ]; then
+	PETALINUX_IMAGE_BBAPPEND=recipes-core/images/petalinux-image.bbappend
+elif [ -f recipes-core/images/petalinux-image-full.bbappend ]; then
+	PETALINUX_IMAGE_BBAPPEND=recipes-core/images/petalinux-image-full.bbappend
+else
+	echo "Not petalinux image .bbappend file in project-spec/meta-user/recipes-core/images/"
+	exit 1;
+fi
+
+echo 'IMAGE_INSTALL_append = " xrt-dev"'            >> $PETALINUX_IMAGE_BBAPPEND
+echo 'IMAGE_INSTALL_append = " mnt-sd"'             >> $PETALINUX_IMAGE_BBAPPEND
+echo 'IMAGE_INSTALL_append = " xrt"'                >> $PETALINUX_IMAGE_BBAPPEND
+echo 'IMAGE_INSTALL_append = " zocl"'               >> $PETALINUX_IMAGE_BBAPPEND
+echo 'IMAGE_INSTALL_append = " opencl-headers-dev"' >> $PETALINUX_IMAGE_BBAPPEND
+echo 'IMAGE_INSTALL_append = " opencl-clhpp-dev"'   >> $PETALINUX_IMAGE_BBAPPEND
 
 echo " * Adding XRT Kernel Node to Device Tree"
 echo "cat ${XRT_REPO_DIR}/src/runtime_src/driver/zynq/fragments/xlnk_dts_fragment_mpsoc.dts >> recipes-bsp/device-tree/files/system-user.dtsi"
 cat ${XRT_REPO_DIR}/src/runtime_src/driver/zynq/fragments/xlnk_dts_fragment_mpsoc.dts >> recipes-bsp/device-tree/files/system-user.dtsi
-echo "cat ${XRT_REPO_DIR}/src/platform/zcu102ng/zcu102_fragment.dts >> recipes-bsp/device-tree/files/system-user.dtsi"
-cat ${XRT_REPO_DIR}/src/platform/zcu102ng/zcu102_fragment.dts >> recipes-bsp/device-tree/files/system-user.dtsi
+echo "cat ${ORIGINAL_DIR}/dsa_build/zcu102_fragment.dts >> recipes-bsp/device-tree/files/system-user.dtsi"
+cat ${ORIGINAL_DIR}/dsa_build/zcu102_fragment.dts >> recipes-bsp/device-tree/files/system-user.dtsi
 
 echo " * Configuring the kernel"
 #Configure Linux kernel (default kernel config is good for zocl driver)
@@ -127,6 +149,7 @@ echo " * Configuring rootfs"
 #   menu -> "user packages" -> xrt-dev
 #   menu -> "user packages" -> zocl
 #   menu -> "user packages" -> opencl-headers-dev
+#   menu -> "user packages" -> opencl-clhpp-dev
 # Saves to: ${PETALINUX_NAME}/project-spec/configs/rootfs_config
 cp ../configs/rootfs_config{,.orig}
 echo 'CONFIG_xrt=y' >> ../configs/rootfs_config
@@ -134,6 +157,7 @@ echo 'CONFIG_mnt-sd=y' >> ../configs/rootfs_config
 echo 'CONFIG_xrt-dev=y' >> ../configs/rootfs_config
 echo 'CONFIG_zocl=y' >> ../configs/rootfs_config
 echo 'CONFIG_opencl-headers-dev=y' >> ../configs/rootfs_config
+echo 'CONFIG_opencl-clhpp-dev=y' >> ../configs/rootfs_config
 petalinux-config -c rootfs --oldconfig
 
 # Build package
@@ -143,32 +167,30 @@ petalinux-build
 
 cd $ORIGINAL_DIR
 echo " * Copying PetaLinux boot files (from: $PWD)"
-set -x
-cp ./${PETALINUX_NAME}/images/linux/image.ub ${XRT_REPO_DIR}/src/platform/zcu102ng/src/a53/xrt/image/image.ub
-mkdir -p ${XRT_REPO_DIR}/src/platform/zcu102ng/src/boot
-cp ./${PETALINUX_NAME}/images/linux/bl31.elf ${XRT_REPO_DIR}/src/platform/zcu102ng/src/boot/bl31.elf
-cp ./${PETALINUX_NAME}/images/linux/pmufw.elf ${XRT_REPO_DIR}/src/platform/zcu102ng/src/boot/pmufw.elf
-cp ./${PETALINUX_NAME}/images/linux/u-boot.elf ${XRT_REPO_DIR}/src/platform/zcu102ng/src/boot/u-boot.elf
+cp ./${PETALINUX_NAME}/images/linux/image.ub ${ORIGINAL_DIR}/dsa_build/src/a53/xrt/image/image.ub
+mkdir -p ${ORIGINAL_DIR}/dsa_build/src/boot
+cp ./${PETALINUX_NAME}/images/linux/bl31.elf ${ORIGINAL_DIR}/dsa_build/src/boot/bl31.elf
+cp ./${PETALINUX_NAME}/images/linux/pmufw.elf ${ORIGINAL_DIR}/dsa_build/src/boot/pmufw.elf
+cp ./${PETALINUX_NAME}/images/linux/u-boot.elf ${ORIGINAL_DIR}/dsa_build/src/boot/u-boot.elf
 
 # NOTE: Renames
-cp ./${PETALINUX_NAME}/images/linux/zynqmp_fsbl.elf ${XRT_REPO_DIR}/src/platform/zcu102ng/src/boot/fsbl.elf
+cp ./${PETALINUX_NAME}/images/linux/zynqmp_fsbl.elf ${ORIGINAL_DIR}/dsa_build/src/boot/fsbl.elf
 
-set +x
+# Prepare Sysroot directory
+echo " * Preparing Sysroot"
+mkdir -p $ORIGINAL_DIR/dsa_build/src/aarch64-xilinx-linux
+cd       $ORIGINAL_DIR/dsa_build/src/aarch64-xilinx-linux
+tar zxf $ORIGINAL_DIR/${PETALINUX_NAME}/images/linux/rootfs.tar.gz 
 
-cd ${XRT_REPO_DIR}/src/platform/zcu102ng/ 
+cd ${ORIGINAL_DIR}/dsa_build
 echo " * Building Platform (from: $PWD)"
-echo "xsct -sdx ./zcu102ng_pfm.tcl"
-xsct -sdx ./zcu102ng_pfm.tcl
+echo "${PATH_TO_XSCT} -sdx ./zcu102ng_pfm.tcl"
+${PATH_TO_XSCT} -sdx ./zcu102ng_pfm.tcl
 
 # Copy platform directory to ORIGINAL_DIR/platform
 echo " * Copy Platform to $ORIGINAL_DIR/platform"
 mkdir -p $ORIGINAL_DIR/platform
 cp -r ./output/zcu102ng/export/zcu102ng $ORIGINAL_DIR/platform
-
-# Prepare Sysroot directory
-mkdir -p $ORIGINAL_DIR/platform/zcu102ng/sw/xrt/sysroot
-cd $ORIGINAL_DIR/platform/zcu102ng/sw/xrt/sysroot
-tar zxf $ORIGINAL_DIR/${PETALINUX_NAME}/images/linux/rootfs.tar.gz 
 
 # Go back to original directory
 cd $ORIGINAL_DIR

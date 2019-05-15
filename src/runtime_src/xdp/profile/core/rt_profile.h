@@ -30,9 +30,6 @@
 #include <iostream>
 #include <memory>
 
-// Separator used for CU port and memory resource (must match HW linker)
-#define PORT_MEM_SEP "-"
-
 namespace xdp {
   class SummaryWriter;
   class TraceLogger;
@@ -85,9 +82,11 @@ namespace xdp {
     void addDeviceName(std::string deviceName) { mDeviceNames.push_back(deviceName); }
     std::string getDeviceNames(const std::string& sep) const;
     std::string getProjectName() const;
-    int getMigrateMemCalls() const;
     const std::set<std::thread::id>& getThreadIds();
+
     // Functions required by guidance
+    int getMigrateMemCalls() const;
+    int getHostP2PTransfers() const;
     double getDeviceStartTime(const std::string& deviceName) const;
     double getTotalKernelExecutionTime(const std::string& deviceName) const;
     uint32_t getComputeUnitCalls(const std::string& deviceName, const std::string& cuName) const;
@@ -104,7 +103,7 @@ namespace xdp {
     void writeStallSummary(ProfileWriterI* writer) const;
     void writeKernelStreamSummary(ProfileWriterI* writer);
     void writeComputeUnitSummary(ProfileWriterI* writer) const;
-    void writeHostTransferSummary(ProfileWriterI* writer) const;
+    void writeTransferSummary(ProfileWriterI* writer, RTUtil::e_monitor_type monitorType) const;
     void writeKernelTransferSummary(ProfileWriterI* writer);
     void writeDeviceTransferSummary(ProfileWriterI* writer) const;
     // Top offenders lists
@@ -127,9 +126,10 @@ namespace xdp {
     void logDataTransfer(uint64_t objId, RTUtil::e_profile_command_kind objKind,
         RTUtil::e_profile_command_state objStage, size_t objSize, uint32_t contextId,
         uint32_t numDevices, std::string deviceName, uint32_t commandQueueId,
-        uint64_t address, const std::string& bank, std::thread::id threadId,
-        const std::string eventString = "", const std::string dependString = "",
-        double timeStampMsec = 0.0);
+        uint64_t srcAddress, const std::string& srcBank,
+        uint64_t dstAddress, const std::string& dstBank,
+        std::thread::id threadId, const std::string eventString = "",
+        const std::string dependString = "", double timeStampMsec = 0.0);
 
     // Log Kernel execution
     void logKernelExecution(uint64_t objId, uint32_t programId, uint64_t eventId,
@@ -148,7 +148,7 @@ namespace xdp {
         xclTraceResultsVector& traceVector);
 
     // Log device counters (used in profile summary)
-    void logDeviceCounters(std::string deviceName, std::string binaryName, xclPerfMonType type,
+    void logDeviceCounters(std::string deviceName, std::string binaryName, uint32_t programId, xclPerfMonType type,
         xclCounterResults& counterResults, uint64_t timeNsec, bool firstReadAfterProgram);
 
   private:

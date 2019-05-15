@@ -28,6 +28,8 @@
 #include <thread>
 #include <queue>
 
+#define FIELD_NOT_APPLICABLE "N/A"
+
 namespace xdp {
   class TimeTrace;
 
@@ -46,14 +48,18 @@ namespace xdp {
 
     enum e_profile_command_kind {
       READ_BUFFER = 0x1,
-      WRITE_BUFFER = 0x2,
-      EXECUTE_KERNEL = 0x3,
-      DEVICE_KERNEL_READ = 0x4,
-      DEVICE_KERNEL_WRITE = 0x5,
-      DEVICE_KERNEL_EXECUTE = 0x6,
-      DEVICE_BUFFER_READ = 0x7,
-      DEVICE_BUFFER_WRITE = 0x8,
-      DEPENDENCY_EVENT = 0x9
+      READ_BUFFER_P2P = 0x2,
+      WRITE_BUFFER = 0x3,
+      WRITE_BUFFER_P2P = 0x4,
+      COPY_BUFFER = 0x5,
+      COPY_BUFFER_P2P = 0x6,
+      EXECUTE_KERNEL = 0x7,
+      DEVICE_KERNEL_READ = 0x8,
+      DEVICE_KERNEL_WRITE = 0x9,
+      DEVICE_KERNEL_EXECUTE = 0xA,
+      DEVICE_BUFFER_READ = 0xB,
+      DEVICE_BUFFER_WRITE = 0xC,
+      DEPENDENCY_EVENT = 0xD
     };
 
     enum e_profile_command_state {
@@ -83,6 +89,13 @@ namespace xdp {
       STALL_TRACE_ALL = STALL_TRACE_EXT | STALL_TRACE_INT | STALL_TRACE_STR
     };
 
+    enum e_monitor_type {
+      MON_HOST_DYNAMIC = 0x0,
+      MON_SHELL_KDMA = 0x1,
+      MON_SHELL_XDMA = 0x2,
+      MON_SHELL_P2P = 0x3
+    };
+
     enum e_flow_mode {CPU = 0, COSIM_EM, HW_EM, DEVICE};
 
   public:
@@ -94,11 +107,14 @@ namespace xdp {
         std::string& commandString);
     static void commandStageToString(e_profile_command_state objStage,
         std::string& stageString);
+    static void monitorTypeToString(e_monitor_type monitorType,
+        std::string& monitorString);
     static void setTimeStamp(e_profile_command_state objStage, TimeTrace* traceObject,
     	double timeStamp);
     static xclPerfMonEventID getFunctionEventID(const std::string &functionName,
         long long queueAddress);
     static void getFlowModeName(e_flow_mode flowMode, std::string& str);
+    static uint32_t getDevTraceBufferSize(uint32_t property);
 
   };
 

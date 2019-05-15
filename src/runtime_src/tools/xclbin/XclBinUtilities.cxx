@@ -28,6 +28,7 @@
 #include <boost/uuid/uuid.hpp>          // for uuid
 #include <boost/uuid/uuid_io.hpp>       // for to_string
 
+#include <arpa/inet.h>
 
 namespace XUtil = XclBinUtilities;
 
@@ -198,6 +199,24 @@ XclBinUtilities::bytesToAlign(unsigned int _offset) {
   return bytesToAlign;
 }
 
+unsigned int
+XclBinUtilities::alignBytes(std::ostream & _buf, unsigned int _byteBoundary)
+{
+  _buf.seekp(0, std::ios_base::end);
+  unsigned int bufSize = _buf.tellp();
+  unsigned int bytesAdded = 0;
+
+  if ((bufSize % _byteBoundary) != 0 ) {
+    bytesAdded = _byteBoundary - (bufSize % _byteBoundary);
+    for (unsigned int index = 0; index < bytesAdded; ++index) {
+      char emptyByte = '\0';
+      _buf.write(&emptyByte, sizeof(char));
+    }
+  }
+
+  return bytesAdded;
+}
+
 
 void
 XclBinUtilities::binaryBufferToHexString(const unsigned char* _binBuf,
@@ -307,7 +326,6 @@ XclBinUtilities::getUUIDAsString( const unsigned char (&_uuid)[16] )
 
 bool
 XclBinUtilities::findBytesInStream(std::fstream& _istream, const std::string& _searchString, unsigned int& _foundOffset) {
-  XUtil::TRACE(XUtil::format("Searching for: %s", _searchString.c_str()));
   _foundOffset = 0;
 
   unsigned int savedLocation = _istream.tellg();
@@ -534,6 +552,12 @@ XclBinUtilities::addSignature(const std::string& _sInputFile, const std::string&
   outputStream.close();
 }
 
+void 
+XclBinUtilities::write_htonl(std::ostream & _buf, uint32_t _word32)
+{
+  uint32_t word32 = htonl(_word32);
+  _buf.write((char *) &word32, sizeof(uint32_t));
+}
 
 
 

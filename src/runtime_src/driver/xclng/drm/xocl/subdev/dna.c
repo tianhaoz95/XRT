@@ -40,6 +40,10 @@
 #define XLNX_DNA_CERTIFICATE_DATA_AXI_ONLY_REGISTER_OFFSET          (0xC0)          //  WO - 512 bit aligned.
 #define XLNX_DNA_MAX_ADDRESS_WORDS                                  (0xC4)
 
+#define DEV2XDEV(d) xocl_get_xdev(to_platform_device(d))
+
+#define XLNX_DNA_INVALID_CAPABILITY_MASK                            0xFFFFFFFE
+
 struct xocl_xlnx_dna {
 	void __iomem		*base;
 	struct device		*xlnx_dna_dev;
@@ -52,7 +56,7 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr,
 	struct xocl_xlnx_dna *xlnx_dna = dev_get_drvdata(dev);
 	u32 status;
 
-	status = ioread32(xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
+	status = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
 
 	return sprintf(buf, "0x%x\n", status);
 }
@@ -64,9 +68,9 @@ static ssize_t dna_show(struct device *dev, struct device_attribute *attr,
 	struct xocl_xlnx_dna *xlnx_dna = dev_get_drvdata(dev);
 	uint32_t dna96_64, dna63_32, dna31_0;
 
-	dna96_64 = ioread32(xlnx_dna->base+XLNX_DNA_READBACK_REGISTER_2_OFFSET);
-	dna63_32 = ioread32(xlnx_dna->base+XLNX_DNA_READBACK_REGISTER_1_OFFSET);
-	dna31_0  = ioread32(xlnx_dna->base+XLNX_DNA_READBACK_REGISTER_0_OFFSET);
+	dna96_64 = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_READBACK_REGISTER_2_OFFSET);
+	dna63_32 = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_READBACK_REGISTER_1_OFFSET);
+	dna31_0  = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_READBACK_REGISTER_0_OFFSET);
 
 	return sprintf(buf, "%08x%08x%08x\n", dna96_64, dna63_32, dna31_0);
 }
@@ -78,7 +82,7 @@ static ssize_t capability_show(struct device *dev, struct device_attribute *attr
 	struct xocl_xlnx_dna *xlnx_dna = dev_get_drvdata(dev);
 	u32 capability;
 
-	capability = ioread32(xlnx_dna->base+XLNX_DNA_CAPABILITY_REGISTER_OFFSET);
+	capability = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_CAPABILITY_REGISTER_OFFSET);
 
 	return sprintf(buf, "0x%x\n", capability);
 }
@@ -91,9 +95,9 @@ static ssize_t dna_version_show(struct device *dev, struct device_attribute *att
 	struct xocl_xlnx_dna *xlnx_dna = dev_get_drvdata(dev);
 	u32 version;
 
-	version = ioread32(xlnx_dna->base+XLNX_DNA_MAJOR_MINOR_VERSION_REGISTER_OFFSET);
+	version = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_MAJOR_MINOR_VERSION_REGISTER_OFFSET);
 
-	return sprintf(buf, "%d.%d\n", version>>16,version&0xffff);
+	return sprintf(buf, "%d.%d\n", version>>16, version&0xffff);
 }
 static DEVICE_ATTR_RO(dna_version);
 
@@ -103,7 +107,7 @@ static ssize_t revision_show(struct device *dev, struct device_attribute *attr,
 	struct xocl_xlnx_dna *xlnx_dna = dev_get_drvdata(dev);
 	u32 revision;
 
-	revision = ioread32(xlnx_dna->base+XLNX_DNA_REVISION_REGISTER_OFFSET);
+	revision = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_REVISION_REGISTER_OFFSET);
 
 	return sprintf(buf, "%d\n", revision);
 }
@@ -125,15 +129,17 @@ static const struct attribute_group xlnx_dna_attrgroup = {
 static uint32_t dna_status(struct platform_device *pdev)
 {
 	struct xocl_xlnx_dna *xlnx_dna = platform_get_drvdata(pdev);
+	struct device *dev  = &pdev->dev;
 	uint32_t status = 0;
 	uint8_t retries = 10;
 	bool rsa4096done = false;
+
 	if (!xlnx_dna)
 		return status;
 
-	while(!rsa4096done && retries){
-		status = ioread32(xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
-		if(status>>8 & 0x1){
+	while (!rsa4096done && retries) {
+		status = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
+		if (status>>8 & 0x1) {
 			rsa4096done = true;
 			break;
 		}
@@ -141,10 +147,10 @@ static uint32_t dna_status(struct platform_device *pdev)
 		retries--;
 	}
 
-	if(retries == 0)
+	if (retries == 0)
 		return -EBUSY;
 
-	status = ioread32(xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
+	status = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
 
 	return status;
 }
@@ -152,12 +158,13 @@ static uint32_t dna_status(struct platform_device *pdev)
 static uint32_t dna_capability(struct platform_device *pdev)
 {
 	struct xocl_xlnx_dna *xlnx_dna = platform_get_drvdata(pdev);
+	struct device *dev  = &pdev->dev;
 	u32 capability = 0;
 
 	if (!xlnx_dna)
 		return capability;
 
-	capability = ioread32(xlnx_dna->base+XLNX_DNA_CAPABILITY_REGISTER_OFFSET);
+	capability = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_CAPABILITY_REGISTER_OFFSET);
 
 	return capability;
 }
@@ -165,45 +172,46 @@ static uint32_t dna_capability(struct platform_device *pdev)
 static void dna_write_cert(struct platform_device *pdev, const uint32_t *cert, uint32_t len)
 {
 	struct xocl_xlnx_dna *xlnx_dna = platform_get_drvdata(pdev);
-	int i,j,k;
+	struct device *dev  = &pdev->dev;
+	int i, j, k;
 	u32 status = 0, words;
 	uint8_t retries = 100;
 	bool sha256done = false;
 	uint32_t convert;
 	uint32_t sign_start, message_words = (len-512)>>2;
-	sign_start = message_words;
 
+	sign_start = message_words;
 	if (!xlnx_dna)
 		return;
 
-	iowrite32(0x1, xlnx_dna->base+XLNX_DNA_MESSAGE_START_AXI_ONLY_REGISTER_OFFSET);
-	status = ioread32(xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
+	xocl_dr_reg_write32(DEV2XDEV(dev), 0x1, xlnx_dna->base+XLNX_DNA_MESSAGE_START_AXI_ONLY_REGISTER_OFFSET);
+	status = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
 	xocl_info(&pdev->dev, "Start: status %08x", status);
 
-	for(i=0;i<message_words;i+=16){
+	for (i = 0; i < message_words; i += 16) {
 
 		retries = 100;
 		sha256done = false;
 
-		while(!sha256done && retries){
-			status = ioread32(xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
-			if(!(status>>4 & 0x1)){
+		while (!sha256done && retries) {
+			status = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
+			if (!(status>>4 & 0x1)) {
 				sha256done = true;
 				break;
 			}
 			msleep(10);
 			retries--;
 		}
-		for(j=0;j<16;++j){
+		for (j = 0; j < 16; ++j) {
 			convert = (*(cert+i+j)>>24 & 0xff) | (*(cert+i+j)>>8 & 0xff00) | (*(cert+i+j)<<8 & 0xff0000) | ((*(cert+i+j) & 0xff)<<24);
-			iowrite32(convert, xlnx_dna->base+XLNX_DNA_DATA_AXI_ONLY_REGISTER_OFFSET+j*4);
+			xocl_dr_reg_write32(DEV2XDEV(dev), convert, xlnx_dna->base+XLNX_DNA_DATA_AXI_ONLY_REGISTER_OFFSET+j*4);
 		}
 	}
 	retries = 100;
 	sha256done = false;
-	while(!sha256done && retries){
-		status = ioread32(xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
-		if(!(status>>4 & 0x1)){
+	while (!sha256done && retries) {
+		status = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
+		if (!(status>>4 & 0x1)) {
 			sha256done = true;
 			break;
 		}
@@ -211,23 +219,21 @@ static void dna_write_cert(struct platform_device *pdev, const uint32_t *cert, u
 		retries--;
 	}
 
-	status = ioread32(xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
-	words  = ioread32(xlnx_dna->base+XLNX_DNA_FSM_DNA_WORD_WRITE_COUNT_REGISTER_OFFSET);
+	status = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
+	words  = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_FSM_DNA_WORD_WRITE_COUNT_REGISTER_OFFSET);
 	xocl_info(&pdev->dev, "Message: status %08x dna words %d", status, words);
 
-	for(k=0;k<128;k+=16){
-		for(i=0;i<16;i++){
-			j=k+i+sign_start;
+	for (k = 0; k < 128; k += 16) {
+		for (i = 0; i < 16; i++) {
+			j = k+i+sign_start;
 			convert = (*(cert+j)>>24 & 0xff) | (*(cert+j)>>8 & 0xff00) | (*(cert+j)<<8 & 0xff0000) | ((*(cert+j) & 0xff)<<24);
-			iowrite32(convert, xlnx_dna->base+XLNX_DNA_CERTIFICATE_DATA_AXI_ONLY_REGISTER_OFFSET+i*4);
+			xocl_dr_reg_write32(DEV2XDEV(dev), convert, xlnx_dna->base+XLNX_DNA_CERTIFICATE_DATA_AXI_ONLY_REGISTER_OFFSET+i*4);
 		}
 	}
 
-	status = ioread32(xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
-	words  = ioread32(xlnx_dna->base+XLNX_DNA_FSM_CERTIFICATE_WORD_WRITE_COUNT_REGISTER_OFFSET);
+	status = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_STATUS_REGISTER_OFFSET);
+	words  = xocl_dr_reg_read32(DEV2XDEV(dev), xlnx_dna->base+XLNX_DNA_FSM_CERTIFICATE_WORD_WRITE_COUNT_REGISTER_OFFSET);
 	xocl_info(&pdev->dev, "Signature: status %08x certificate words %d", status, words);
-
-	return;
 }
 
 static struct xocl_dna_funcs dna_ops = {
@@ -273,6 +279,7 @@ static int xlnx_dna_probe(struct platform_device *pdev)
 	struct xocl_xlnx_dna *xlnx_dna;
 	struct resource *res;
 	int err;
+	uint32_t capability;
 
 	xlnx_dna = devm_kzalloc(&pdev->dev, sizeof(*xlnx_dna), GFP_KERNEL);
 	if (!xlnx_dna)
@@ -299,10 +306,17 @@ static int xlnx_dna_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, xlnx_dna);
 
-	err = mgmt_sysfs_create_xlnx_dna(pdev);
-	if (err) {
+	capability = dna_capability(pdev);
+	if (capability & XLNX_DNA_INVALID_CAPABILITY_MASK) {
+		xocl_err(&pdev->dev, "DNA IP does not present");
+		err = -EINVAL;
 		goto create_xlnx_dna_failed;
 	}
+
+	err = mgmt_sysfs_create_xlnx_dna(pdev);
+	if (err)
+		goto create_xlnx_dna_failed;
+
 	xocl_subdev_register(pdev, XOCL_SUBDEV_DNA, &dna_ops);
 
 	return 0;

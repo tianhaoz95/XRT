@@ -7,7 +7,7 @@
 
 INCLUDE (FindPkgConfig)
 
-# DRM
+# -- DRM --
 pkg_check_modules(DRM REQUIRED libdrm)
 IF(DRM_FOUND)
   MESSAGE(STATUS "Looking for DRM - found at ${DRM_PREFIX} ${DRM_VERSION}")
@@ -16,7 +16,7 @@ ELSE(DRM_FOUND)
   MESSAGE(FATAL_ERROR "Looking for DRM - not found")
 ENDIF(DRM_FOUND)
 
-# OpenCL header files
+# -- OpenCL header files -- 
 pkg_check_modules(OPENCL REQUIRED OpenCL)
 IF(OPENCL_FOUND)
   MESSAGE(STATUS "Looking for OPENCL - found at ${OPENCL_PREFIX} ${OPENCL_VERSION} ${OPENCL_INCLUDEDIR}")
@@ -25,10 +25,11 @@ ELSE(OPENCL_FOUND)
   MESSAGE(FATAL_ERROR "Looking for OPENCL - not found")
 ENDIF(OPENCL_FOUND)
 
+# -- Git --
 find_package(Git)
 
 IF(GIT_FOUND)
-  message("git found: ${GIT_EXECUTABLE}")
+  MESSAGE(STATUS "Looking for GIT - found at ${GIT_EXECUTABLE}")
 ELSE(GIT_FOUND)
   MESSAGE(FATAL_ERROR "Looking for GIT - not found")
 endif(GIT_FOUND)
@@ -59,16 +60,22 @@ INCLUDE (FindBoost)
 if ((${LINUX_FLAVOR} STREQUAL Ubuntu) AND (${LINUX_VERSION} STREQUAL 18.04))
    set(Boost_USE_STATIC_LIBS  ON)
 endif()
+if (${LINUX_FLAVOR} STREQUAL pynqlinux)
+   set(Boost_USE_STATIC_LIBS  ON)
+endif()
 find_package(Boost REQUIRED COMPONENTS system filesystem )
 
 INCLUDE (FindCurses)
 find_package(Curses REQUIRED)
 
+set (XRT_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/xrt")
+set (XRT_INSTALL_INCLUDE_DIR "${XRT_INSTALL_DIR}/include")
+
 # Release OpenCL extension headers
 set(XRT_CL_EXT_SRC
   include/1_2/CL/cl_ext_xilinx.h
   include/1_2/CL/cl_ext.h)
-install (FILES ${XRT_CL_EXT_SRC} DESTINATION ${XRT_INSTALL_DIR}/include/CL)
+install (FILES ${XRT_CL_EXT_SRC} DESTINATION ${XRT_INSTALL_INCLUDE_DIR}/CL)
 message("-- XRT CL extension header files")
 foreach (header ${XRT_CL_EXT_SRC})
   message("-- ${header}")
@@ -116,10 +123,11 @@ include (CMake/dkms-aws.cmake)
 
 include (CMake/icd.cmake)
 
+include (CMake/changelog.cmake)
+
 include (CMake/pkgconfig.cmake)
 
 include (CMake/coverity.cmake)
 
 set (CTAGS "${CMAKE_SOURCE_DIR}/runtime_src/tools/scripts/tags.sh")
 include (CMake/tags.cmake)
-

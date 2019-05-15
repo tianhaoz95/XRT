@@ -156,7 +156,7 @@ get_buffer_object(device* device)
   auto boh = (m_bomap[device] = device->allocate_buffer_object(this,m_memidx));
 
   // To be deleted when strict bank rules are enforced
-  if (m_memidx==-1) {
+  if (boh && m_memidx==-1) {
     auto mset = device->get_boh_memidx(boh);
     for (size_t idx=0; idx<mset.size(); ++idx) {
       if (mset.test(idx)) {
@@ -171,7 +171,7 @@ get_buffer_object(device* device)
     for (auto& karg : m_karg) {
       auto kernel = karg.first;
       auto argidx = karg.second;
-      if (!kernel->validate_cus(argidx,m_memidx))
+      if (!kernel->validate_cus(device,argidx,m_memidx))
         throw xocl::error(CL_MEM_OBJECT_ALLOCATION_FAILURE,
                           "Buffer connected to memory '"
                           + std::to_string(m_memidx)
@@ -206,7 +206,6 @@ get_buffer_object_or_null(const device* device) const
     ? nullptr
     : (*itr).second;
 }
-
 
 memory::buffer_object_handle
 memory::
@@ -275,6 +274,9 @@ get_memidx_nolock(const device* dev) const
   // already initialized
   if (m_memidx>=0)
     return m_memidx;
+
+  if (m_flags & CL_MEM_REGISTER_MAP)
+    return -1;
 
   // subbuffer case must be tested thoroughly
   if (auto parent = get_sub_buffer_parent()) {

@@ -150,8 +150,10 @@ fi
 if [[ "X$sdx" != "X" && -d "$sdx" ]] ; then
  export XILINX_SDX=${XILINX_SDX:=$sdx}
  export XILINX_OPENCL=$XILINX_SDX
- export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:$XILINX_SDX/lib/lnx64${ext}/Default:$XILINX_SDX/lib/lnx64${ext}:$XILINX_SDX/runtime/lib/x86_64
+ export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:$XILINX_SDX/lib/lnx64.o/Default:$XILINX_SDX/lib/lnx64.o:$XILINX_SDX/runtime/lib/x86_64
 fi
+
+export DSA=`${XILINX_XRT}/bin/xbutil list | grep '\[0\]' | cut -d' ' -f3`
 
 echo "XILINX_XRT      = $XILINX_XRT"
 echo "XILINX_SDX      = $XILINX_SDX"
@@ -208,8 +210,7 @@ for f in ${tests[*]}; do
  if [ $sync == 1 ]; then
   # sync from sprite
   echo $base/$f/${rundir}
-  rsync -avz -f '- /*/*/' $base/$f/${rundir} $f/
-  rsync -avz -f '+ /*/xclbin/' -f '+ /*/src/' -f '+ /*/data/' -f '- /*/*/' $base/$f/${rundir} $f/
+  rsync -avz -f '- /*/_x*/' -f '- /*/.Xil/' -f '- /*/reports/' -f '- /*/xocc_log/' -f '- /*/xbinst/' $base/$f/${rundir} $f/
  fi
 
  if [ $run -eq 0 ]; then
@@ -229,13 +230,15 @@ for f in ${tests[*]}; do
   echo "XILINX_SDX      = $XILINX_SDX"
   echo "XILINX_OPENCL   = $XILINX_OPENCL"
   echo "LD_LIBRARY_PATH = $LD_LIBRARY_PATH"
+  echo "DSA		= $DSA"
   echo "================================================================"
 
-  cmd=`grep '\.exe' board_lsf.sh |grep  -v echo | grep -v '/bin/cp' | /bin/sed -e 's/2>&1 | tee output.log//g'| awk '{printf("./host.exe "); for(i=5;i<=NF;++i) printf("%s ",$i)}'`
+  cmd=`grep 'host.exe' board_lsf.sh |grep  -v echo | grep -v '/bin/cp' | /bin/sed -e 's/2>&1 | tee output.log//g'| awk '{printf("./host.exe "); for(i=5;i<=NF;++i) printf("%s ",$i)}'`
 
   # this is required for dsv.onbrd suite
   if [ "X$cmd" == "X" ]; then
       cmd=`grep -e 'args.*:' sdainfo.yml | awk -F: '{print $2}'`
+      cmd=`echo $cmd | sed 's/${DSA}/__DSA__/g' | sed "s/__DSA__/${DSA}/g"`
   fi
 
   echo "Running $cmd"

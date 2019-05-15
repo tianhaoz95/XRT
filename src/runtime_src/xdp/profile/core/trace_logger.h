@@ -63,8 +63,8 @@ namespace xdp {
     void logDataTransfer(uint64_t objId, RTUtil::e_profile_command_kind objKind,
         RTUtil::e_profile_command_state objStage, size_t objSize, uint32_t contextId,
         uint32_t numDevices, std::string deviceName, uint32_t commandQueueId,
-        uint64_t address, const std::string& bank, std::thread::id threadId,
-        const std::string eventString = "", const std::string dependString = "",
+		uint64_t srcAddress, const std::string& srcBank, uint64_t dstAddress, const std::string& dstBank,
+		std::thread::id threadId, const std::string eventString = "", const std::string dependString = "",
         double timeStampMsec = 0.0);
 
     // Log Kernel execution
@@ -92,14 +92,20 @@ namespace xdp {
         const std::string& dependString, uint64_t objId, size_t size) const;
     void writeTimelineTrace(double traceTime, const std::string& commandString,
         const std::string& stageString, const std::string& eventString,
-        const std::string& dependString, size_t size, uint64_t address,
-        const std::string& bank, std::thread::id threadId) const;
-    void writeTimelineTrace(double traceTime,
-        const std::string& commandString, const std::string& stageString,
-        const std::string& eventString, const std::string& dependString) const;
+        const std::string& dependString, uint64_t objId, size_t size, uint32_t cuId) const;
+    void writeTimelineTrace(double traceTime, RTUtil::e_profile_command_kind kind,
+   	    const std::string& commandString, const std::string& stageString,
+        const std::string& eventString, const std::string& dependString,
+        size_t size, uint64_t srcAddress, const std::string& srcBank,
+        uint64_t dstAddress, const std::string& dstBank,
+        std::thread::id threadId) const;
+    void writeTimelineTrace(double traceTime, const std::string& commandString,
+        const std::string& stageString, const std::string& eventString,
+        const std::string& dependString) const;
 
   public:
     int getMigrateMemCalls() const { return mMigrateMemCalls;}
+    int getHostP2PTransfers() const { return mHostP2PTransfers;}
     std::string getCurrentBinaryName() const {return mCurrentBinaryName;}
     const std::set<std::thread::id>& getThreadIds() {return mThreadIdSet;}
 
@@ -114,7 +120,9 @@ namespace xdp {
     bool mGetFirstCUTimestamp = true;
     bool mFunctionStartLogged = false;
     int mMigrateMemCalls;
+    int mHostP2PTransfers;
     uint32_t mCurrentContextId;
+    uint32_t mCuStarts;
     std::string mCurrentKernelName;
     std::string mCurrentDeviceName;
     std::string mCurrentBinaryName;
@@ -124,6 +132,7 @@ namespace xdp {
     std::map<uint64_t, BufferTrace*> mBufferTraceMap;
     std::map<uint64_t, DeviceTrace*> mDeviceTraceMap;
     std::map<std::string, std::queue<double>> mKernelStartsMap;
+    std::map<uint64_t, std::queue<uint32_t>> mCuStartsMap;
     std::set<std::thread::id> mThreadIdSet;
 
     ProfileCounters* mProfileCounters;

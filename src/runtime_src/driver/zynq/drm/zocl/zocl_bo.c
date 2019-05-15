@@ -212,6 +212,10 @@ zocl_create_svm_bo(struct drm_device *dev, void *data, struct drm_file *filp)
 
 	zocl_describe(bo);
 	drm_gem_object_unreference_unlocked(&bo->gem_base);
+
+	/* Update memory usage statistics */
+	zocl_update_mem_stat(dev->dev_private, args->size, 1);
+
 	return ret;
 
 out_free:
@@ -263,6 +267,15 @@ zocl_create_bo_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 	zocl_describe(bo);
 	drm_gem_object_unreference_unlocked(&bo->cma_base.base);
 
+	/*
+	 * Update memory usage statistics.
+	 *
+	 * Note: We can not use args->size here because it is
+	 *       the required size while gem object records the
+	 *       actual size allocated.
+	 */
+	zocl_update_mem_stat(zdev, bo->gem_base.size, 1);
+
 	return ret;
 }
 
@@ -276,15 +289,19 @@ zocl_userptr_bo_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 	struct page **pages;
 	unsigned int sg_count;
 
-	if (offset_in_page(args->addr))
+	if (offset_in_page(args->addr)) {
+		DRM_ERROR("User ptr not PAGE aligned\n");
 		return -EINVAL;
+	}
 
-	if (args->flags & XCL_BO_FLAGS_EXECBUF)
+	if (args->flags & XCL_BO_FLAGS_EXECBUF) {
+		DRM_ERROR("Exec buf could not be a user buffer\n");
 		return -EINVAL;
+	}
 
 	bo = zocl_create_userprt_bo(dev, args->size);
 	if (IS_ERR(bo)) {
-		DRM_DEBUG("object creation failed\n");
+		DRM_ERROR("Object creation failed\n");
 		return PTR_ERR(bo);
 	}
 
@@ -299,6 +316,7 @@ zocl_userptr_bo_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 
 	ret = get_user_pages_fast(args->addr, page_count, 1, pages);
 	if (ret != page_count) {
+		DRM_ERROR("Unable to get user pages\n");
 		ret = -ENOMEM;
 		goto out0;
 	}
@@ -309,10 +327,10 @@ zocl_userptr_bo_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 		goto out0;
 	}
 
-
 	sg_count = dma_map_sg(dev->dev, bo->cma_base.sgt->sgl,
 				bo->cma_base.sgt->nents, 0);
 	if (sg_count <= 0) {
+		DRM_ERROR("Map SG list failed\n");
 		ret = -ENOMEM;
 		goto out0;
 	}
@@ -321,6 +339,7 @@ zocl_userptr_bo_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 
 	/* Physical address must be continuous */
 	if (sg_count != 1) {
+		DRM_ERROR("User buffer is not physical contiguous\n");
 		ret = -EINVAL;
 		goto out0;
 	}
@@ -330,7 +349,7 @@ zocl_userptr_bo_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 	ret = drm_gem_handle_create(filp, &bo->cma_base.base, &args->handle);
 	if (ret) {
 		ret = -EINVAL;
-		DRM_DEBUG("handle creation failed\n");
+		DRM_ERROR("Handle creation failed\n");
 		goto out0;
 	}
 
@@ -636,3 +655,17 @@ void zocl_free_host_bo(struct drm_gem_object *gem_obj)
 	kfree(&zocl_bo->cma_base);
 }
 
+/*
+ * Update the memory usage of by BO.
+ *
+ * count is the number of BOs being allocated/freed. If count > 0, we are
+ * allocating 'count' BOs with total size 'size'; If count < 0, we are
+ * freeing 'count' BOs with total size 'size'.
+ */
+void zocl_update_mem_stat(struct drm_zocl_dev *zdev, u64 size, int count)
+{
+	write_lock(&zdev->attr_rwlock);
+	zdev->mm_usage.memory_usage += (count > 0) ?  size : -size;
+	zdev->mm_usage.bo_count += count;
+	write_unlock(&zdev->attr_rwlock);
+}

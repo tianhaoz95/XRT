@@ -238,6 +238,11 @@ namespace xdp {
     return mLogger->getMigrateMemCalls();
   }
 
+  int RTProfile::getHostP2PTransfers() const
+  {
+    return mLogger->getHostP2PTransfers();
+  }
+
   const std::set<std::thread::id>& RTProfile::getThreadIds()
   {
     return mLogger->getThreadIds();
@@ -280,10 +285,10 @@ namespace xdp {
   // External access to writer
   // ***************************************************************************
 
-  void RTProfile::logDeviceCounters(std::string deviceName, std::string binaryName, xclPerfMonType type,
-      xclCounterResults& counterResults, uint64_t timeNsec, bool firstReadAfterProgram)
+  void RTProfile::logDeviceCounters(std::string deviceName, std::string binaryName, uint32_t programId,
+      xclPerfMonType type, xclCounterResults& counterResults, uint64_t timeNsec, bool firstReadAfterProgram)
   {
-    mWriter->logDeviceCounters(deviceName, binaryName, type, counterResults, timeNsec, firstReadAfterProgram);
+    mWriter->logDeviceCounters(deviceName, binaryName, programId, type, counterResults, timeNsec, firstReadAfterProgram);
   }
 
   void RTProfile::writeAPISummary(ProfileWriterI* writer) const
@@ -306,9 +311,9 @@ namespace xdp {
   {
     return mWriter->writeComputeUnitSummary(writer);
   }
-  void RTProfile::writeHostTransferSummary(ProfileWriterI* writer) const
+  void RTProfile::writeTransferSummary(ProfileWriterI* writer, RTUtil::e_monitor_type monitorType) const
   {
-    mWriter->writeHostTransferSummary(writer);
+    mWriter->writeTransferSummary(writer, monitorType);
   }
   void RTProfile::writeKernelTransferSummary(ProfileWriterI* writer)
   {
@@ -360,13 +365,14 @@ namespace xdp {
   void RTProfile::logDataTransfer(uint64_t objId, RTUtil::e_profile_command_kind objKind,
       RTUtil::e_profile_command_state objStage, size_t objSize, uint32_t contextId,
       uint32_t numDevices, std::string deviceName, uint32_t commandQueueId,
-      uint64_t address, const std::string& bank, std::thread::id threadId,
-      const std::string eventString, const std::string dependString,
-      double timeStampMsec)
+      uint64_t srcAddress, const std::string& srcBank,
+      uint64_t dstAddress, const std::string& dstBank,
+      std::thread::id threadId, const std::string eventString,
+      const std::string dependString, double timeStampMsec)
   {
     mLogger->logDataTransfer(objId, objKind, objStage, objSize, contextId, numDevices,
-        deviceName, commandQueueId, address, bank, threadId, eventString,
-		dependString, timeStampMsec);
+        deviceName, commandQueueId, srcAddress, srcBank, dstAddress, dstBank, threadId,
+        eventString, dependString, timeStampMsec);
   }
 
   void RTProfile::logKernelExecution(uint64_t objId, uint32_t programId, uint64_t eventId,

@@ -128,7 +128,10 @@ extern "C" {
         KEYVALUE_METADATA,
         USER_METADATA,
         DNA_CERTIFICATE,
-        PDI 
+        PDI,
+        BITSTREAM_PARTIAL_PDI,
+        DTC,
+        EMULATION_DATA
     };
 
     enum MEM_TYPE {
@@ -148,7 +151,9 @@ extern "C" {
         IP_MB = 0,
         IP_KERNEL, //kernel instance
         IP_DNASC,
-        IP_DDR4_CONTROLLER
+        IP_DDR4_CONTROLLER,
+        IP_MEM_DDR4,
+        IP_MEM_HBM
     };
 
     struct axlf_section_header {
@@ -203,17 +208,17 @@ extern "C" {
 
     /****   MEMORY TOPOLOGY SECTION ****/
     struct mem_data {
-	uint8_t m_type; //enum corresponding to mem_type.
-	uint8_t m_used; //if 0 this bank is not present
-	union {
-	    uint64_t m_size; //if mem_type DDR, then size in KB;
-	    uint64_t route_id; //if streaming then "route_id"
-	};
-	union {
-	    uint64_t m_base_address;//if DDR then the base address;
-	    uint64_t flow_id; //if streaming then "flow id"
-	};
-	unsigned char m_tag[16]; //DDR: BANK0,1,2,3, has to be null terminated; if streaming then stream0, 1 etc
+        uint8_t m_type; //enum corresponding to mem_type.
+        uint8_t m_used; //if 0 this bank is not present
+        union {
+            uint64_t m_size; //if mem_type DDR, then size in KB;
+            uint64_t route_id; //if streaming then "route_id"
+        };
+        union {
+            uint64_t m_base_address;//if DDR then the base address;
+            uint64_t flow_id; //if streaming then "flow id"
+        };
+        unsigned char m_tag[16]; //DDR: BANK0,1,2,3, has to be null terminated; if streaming then stream0, 1 etc
     };
 
     struct mem_topology {
@@ -243,10 +248,37 @@ extern "C" {
 
 
     /****   IP_LAYOUT SECTION ****/
+
+    // IP Kernel 
+    #define IP_INT_ENABLE_MASK    0x0001
+    #define IP_INTERRUPT_ID_MASK  0x00FE
+    #define IP_INTERRUPT_ID_SHIFT 0x1
+        
+    enum IP_CONTROL {
+        AP_CTRL_HS = 0,
+        AP_CTRL_CHAIN = 1,
+        AP_CTRL_NONE = 2,
+        AP_CTRL_ME = 3
+    };
+
+    #define IP_CONTROL_MASK  0xFF00
+    #define IP_CONTROL_SHIFT 0x8
+
     /* IPs on AXI lite - their types, names, and base addresses.*/
     struct ip_data {
         uint32_t m_type; //map to IP_TYPE enum
-        uint32_t properties; //32 bits to indicate ip specific property. eg if m_type == IP_KERNEL then bit 0 is for interrupt.
+        union {
+            uint32_t properties; // Default: 32-bits to indicate ip specific property. 
+                                 // m_type: IP_KERNEL
+                                 //         m_int_enable   : Bit  - 0x0000_0001;
+                                 //         m_interrupt_id : Bits - 0x0000_00FE; 
+                                 //         m_ip_control   : Bits = 0x0000_FF00;
+            struct {             // m_type: IP_MEM_*
+               uint16_t m_index;
+               uint8_t m_pc_index;
+               uint8_t unused;
+            } indices;
+        };
         uint64_t m_base_address;
         uint8_t m_name[64]; //eg Kernel name corresponding to KERNEL instance, can embed CU name in future.
     };
@@ -266,7 +298,8 @@ extern "C" {
         AXI_MONITOR_FIFO_LITE,
         AXI_MONITOR_FIFO_FULL,
         ACCEL_MONITOR,
-        AXI_STREAM_MONITOR
+        AXI_STREAM_MONITOR,
+	AXI_STREAM_PROTOCOL_CHECKER
     };
 
     struct debug_ip_data {
@@ -277,7 +310,7 @@ extern "C" {
         uint8_t m_minor;
         uint8_t m_reserved[3];
         uint64_t m_base_address;
-        uint8_t m_name[128];
+        char    m_name[128];
     };
 
     struct debug_ip_layout {

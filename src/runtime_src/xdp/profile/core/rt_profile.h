@@ -117,6 +117,8 @@ namespace xdp {
 
   public:
     // External access to logger
+
+    // OpenCL function call logger APIs
     void logFunctionCallStart(const char* functionName, long long queueAddress, unsigned int functionID);
     void logFunctionCallEnd(const char* functionName, long long queueAddress, unsigned int functionID);
 

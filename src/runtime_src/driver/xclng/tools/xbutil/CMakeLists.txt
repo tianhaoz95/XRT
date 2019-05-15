@@ -20,6 +20,7 @@ target_link_libraries(xbutil
   xrt_coreutil_static
   pthread
   rt
+  dl
   boost_filesystem
   boost_system
   uuid

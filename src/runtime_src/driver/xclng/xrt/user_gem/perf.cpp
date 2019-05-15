@@ -39,6 +39,7 @@
 #include "driver/xclng/include/mgmt-ioctl.h"
 #include "driver/xclng/include/xocl_ioctl.h"
 #include "driver/include/xclperf.h"
+#include "plugin/xdp/hal_profile.h"
 #include "driver/include/xcl_perfmon_parameters.h"
 
 #include <sys/types.h>
@@ -1137,6 +1138,11 @@ namespace xocl {
     return 0;
   }
 
+  int XOCLShim::xclConfigPlugin(HalPluginConfig* config) {
+    xdphal::load_xdp_plugin_library(config);
+    return 0;
+  }
+
 } // namespace xocl_gem
 
 void xclPerfMonConfigureDataflow(xclDeviceHandle handle, xclPerfMonType type, unsigned *ip_config)
@@ -1272,4 +1278,8 @@ int xclGetDebugProfileDeviceInfo(xclDeviceHandle handle, xclDebugProfileDeviceIn
   return drv ? drv->xclGetDebugProfileDeviceInfo(info) : -ENODEV;
 }
 
+int xclConfigPlugin(xclDeviceHandle handle, HalPluginConfig* config) {
+  xocl::XOCLShim *drv = xocl::XOCLShim::handleCheck(handle);
+  return drv ? drv->xclConfigPlugin(config) : -ENODEV;
+}
 

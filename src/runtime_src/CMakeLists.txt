@@ -75,11 +75,16 @@ target_link_libraries(oclxdp
   xilinxopencl
  )
 
+add_library(xdp_hal_plugin SHARED ${XRT_SRC} $<TARGET_OBJECTS:xdp_hal_plugin_obj>)
+add_dependencies(xdp_hal_plugin xrt_corestatic xdp)
+target_link_libraries(xdp_hal_plugin xrt_corestatic xdp)
+
 set_target_properties(oclxdp PROPERTIES VERSION ${XRT_VERSION_STRING}
   SOVERSION ${XRT_SOVERSION})
 
 set_target_properties(xdp PROPERTIES VERSION ${XRT_VERSION_STRING}
   SOVERSION ${XRT_SOVERSION})
+
 
 target_link_libraries(xilinxopencl
   xrt_coreutil
@@ -90,8 +95,8 @@ target_link_libraries(xilinxopencl
   crypt
   uuid
   rt
-  )
+)
 
-install (TARGETS xilinxopencl oclxdp LIBRARY DESTINATION ${XRT_INSTALL_DIR}/lib)
+install (TARGETS xilinxopencl oclxdp xdp_hal_plugin LIBRARY DESTINATION ${XRT_INSTALL_DIR}/lib)
 
 add_subdirectory(driver)

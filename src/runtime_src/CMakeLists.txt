@@ -76,8 +76,8 @@ target_link_libraries(oclxdp
  )
 
 add_library(xdp_hal_plugin SHARED ${XRT_SRC} $<TARGET_OBJECTS:xdp_hal_plugin_obj>)
-add_dependencies(xdp_hal_plugin xrt_corestatic xdp)
-target_link_libraries(xdp_hal_plugin xrt_corestatic xdp)
+add_dependencies(xdp_hal_plugin xrt_core_static xdp)
+target_link_libraries(xdp_hal_plugin xrt_core_static xdp)
 
 set_target_properties(oclxdp PROPERTIES VERSION ${XRT_VERSION_STRING}
   SOVERSION ${XRT_SOVERSION})

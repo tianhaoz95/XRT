@@ -1138,7 +1138,7 @@ namespace xocl {
     return 0;
   }
 
-  int XOCLShim::xclConfigPlugin(HalPluginConfig* config) {
+  int shim::xclConfigPlugin(HalPluginConfig* config) {
     xdphal::load_xdp_plugin_library(config);
     return 0;
   }
@@ -1279,7 +1279,7 @@ int xclGetDebugProfileDeviceInfo(xclDeviceHandle handle, xclDebugProfileDeviceIn
 }
 
 int xclConfigPlugin(xclDeviceHandle handle, HalPluginConfig* config) {
-  xocl::XOCLShim *drv = xocl::XOCLShim::handleCheck(handle);
+  xocl::shim *drv = xocl::shim::handleCheck(handle);
   return drv ? drv->xclConfigPlugin(config) : -ENODEV;
 }
 

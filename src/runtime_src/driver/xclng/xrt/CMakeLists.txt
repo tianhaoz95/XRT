@@ -17,7 +17,7 @@ add_library(xrt_core_static STATIC ${XRT_SRC}
   $<TARGET_OBJECTS:user_gem>
   )
 
-target_link_libraries(xrt_corestatic
+target_link_libraries(xrt_core_static
   dl
 )
 

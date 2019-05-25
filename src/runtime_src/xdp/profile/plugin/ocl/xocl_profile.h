@@ -191,6 +191,9 @@ startCounters(key k, xclPerfMonType type);
 cl_int 
 stopCounters(key k, xclPerfMonType type);
 
+std::vector<debug_ip_data>
+readDebugIPLayout(key k);
+
 cl_int 
 logTrace(key k, xclPerfMonType type, bool forceRead);
 

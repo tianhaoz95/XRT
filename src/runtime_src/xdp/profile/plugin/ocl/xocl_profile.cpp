@@ -598,6 +598,21 @@ stopCounters(key k, xclPerfMonType type)
   return CL_SUCCESS;
 }
 
+std::vector<debug_ip_data>
+readDebugIPLayout(key k) {
+  std::vector<debug_ip_data> debug_ip_list;
+  auto device = k;
+  auto xdevice = device->get_xrt_device();
+  std::string subdev = "icap";
+  std::string entry = "debug_ip_layout";
+  std::string debug_ip_layout_path = xdevice->getSysfsPath(subdev, entry).get();
+  std::ifstream debug_ip_layout_path_file(debug_ip_layout_path.c_str(), std::ifstream::binary);
+  if (debug_ip_layout_path_file.good()) {
+    debug_ip_layout_path_file.read(buffer, debug_ip_layout_max_size);
+  }
+  return debug_ip_list;
+}
+
 cl_int 
 logTrace(key k, xclPerfMonType type, bool forceRead)
 {

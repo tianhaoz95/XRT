@@ -601,6 +601,9 @@ stopCounters(key k, xclPerfMonType type)
 std::vector<debug_ip_data>
 readDebugIPLayout(key k) {
   std::vector<debug_ip_data> debug_ip_list;
+  int debug_ip_layout_max_size = 65536;
+  char buffer[debug_ip_layout_max_size];
+  debug_ip_layout* debug_ip_layout_obj;
   auto device = k;
   auto xdevice = device->get_xrt_device();
   std::string subdev = "icap";
@@ -609,6 +612,12 @@ readDebugIPLayout(key k) {
   std::ifstream debug_ip_layout_path_file(debug_ip_layout_path.c_str(), std::ifstream::binary);
   if (debug_ip_layout_path_file.good()) {
     debug_ip_layout_path_file.read(buffer, debug_ip_layout_max_size);
+    if (debug_ip_layout_path_file.gcount() > 0) {
+      debug_ip_layout_obj = (debug_ip_layout*)(buffer);
+      for(unsigned int ip_index = 0; ip_index < debug_ip_layout_obj->m_count; ip_index++ ) {
+        debug_ip_list.push_back(debug_ip_layout_obj->m_debug_ip_data[ip_index]);
+      }
+    }
   }
   return debug_ip_list;
 }
